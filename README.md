@@ -42,4 +42,6 @@ npm install && npm run dev
 
 Local rehearsal on an Arc fork: `anvil --fork-url https://rpc.mainnet.arc.io --port 8547 --chain-id 5042`, then `contracts/script/local/setup-local.sh`.
 
+**Live app:** https://meme-this.vercel.app
+
 Experimental and unaudited. Coins are memes, not investments.
