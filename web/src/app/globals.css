@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/* Kokonut DS: monochrome neutral tokens, colour only for signals. */
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --primary: #171717;
+  --primary-foreground: #fafafa;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --border: #e5e5e5;
+  --ring: #0a0a0a;
+  --destructive: #ef4444;
+  --positive: #10b981; /* emerald 500: live, gains, success */
+  --link: #2563eb; /* blue 600 */
+  --radius: 0.5rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-positive: var(--positive);
+  --color-link: var(--link);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-lg: var(--radius);
+  --animate-mesh-1: mesh 20s ease-in-out infinite;
+  --animate-mesh-2: mesh 25s ease-in-out infinite reverse;
+}
+
+@keyframes mesh {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(40px, -30px) scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-mesh-1, .animate-mesh-2 { animation: none; }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  letter-spacing: -0.025em;
+}
+
+h1, h2, h3 { letter-spacing: -0.05em; }

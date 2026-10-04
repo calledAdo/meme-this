@@ -1,0 +1,9 @@
+.DS_Store
+.claude/
+# Third-party design reference, not ours to publish
+Robaire Design System.pdf
+# Foundry
+contracts/out/
+contracts/cache/
+contracts/lib/
+contracts/broadcast/
