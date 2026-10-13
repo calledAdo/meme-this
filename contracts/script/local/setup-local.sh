@@ -19,7 +19,7 @@ ATTESTER=0xa0Ee7A142d267C1f36714E4a8F75612F20a79720                             
 send() { cast send --rpc-url "$RPC" "$@" >/dev/null; }
 
 USDC=$(forge create script/local/MockUSDC.sol:MockUSDC --rpc-url "$RPC" --private-key "$OWNER_KEY" --broadcast | awk '/Deployed to/ {print $3}')
-OUT=$(USDC=$USDC TREASURY=$OWNER HOST=$OWNER ATTESTER=$ATTESTER TARGET=5000000 \
+OUT=$(USDC=$USDC TREASURY=$OWNER ATTESTER=$ATTESTER TARGET=5000000 \
   forge script script/Deploy.s.sol --rpc-url "$RPC" --private-key "$OWNER_KEY" --broadcast 2>&1)
 ARENA=$(echo "$OUT" | awk '$1=="MemeArena" && $2 ~ /^0x/ {print $2}' | tail -1)
 LOCKER=$(echo "$OUT" | awk '$1=="LpLocker" && $2 ~ /^0x/ {print $2}' | tail -1)
@@ -27,15 +27,14 @@ LOCKER=$(echo "$OUT" | awk '$1=="LpLocker" && $2 ~ /^0x/ {print $2}' | tail -1)
 for who in $OWNER $ALICE $BOB; do send "$USDC" "mint(address,uint256)" "$who" 1000000000 --private-key "$OWNER_KEY"; done
 for key in $OWNER_KEY $ALICE_KEY $BOB_KEY; do send "$USDC" "approve(address,uint256)" "$ARENA" 1000000000 --private-key "$key"; done
 
-META='data:application/json,%7B%22title%22%3A%22Fed%20cuts%20rates%22%2C%22kind%22%3A%22news%22%7D'
-send "$ARENA" "createPrompt(uint32,string)" 21600 "$META" --private-key "$OWNER_KEY"
-
-LORE1='data:application/json,%7B%22lore%22%3A%22Money%20printer%20go%20brrr%22%7D'
-LORE2='data:application/json,%7B%22lore%22%3A%22A%20tiny%20snip%20for%20rates%22%7D'
+ELON=$(cast keccak "x:elonmusk")
+CULTURE=$(cast keccak "culture")
+LORE1='data:application/json,%7B%22lore%22%3A%22Next%20stop%20Mars%22%2C%22source%22%3A%22https%3A%2F%2Fx.com%2Felonmusk%2Fstatus%2F1%22%7D'
+LORE2='data:application/json,%7B%22lore%22%3A%22X%20for%20president%22%7D'
 LORE3='data:application/json,%7B%22lore%22%3A%22Quack%22%7D'
-send "$ARENA" "pitch(uint256,string,string,string)" 1 "Money Printer" BRRR "$LORE1" --private-key "$ALICE_KEY"
-send "$ARENA" "pitch(uint256,string,string,string)" 1 "Rate Snip" SNIP "$LORE2" --private-key "$BOB_KEY"
-send "$ARENA" "pitch(uint256,string,string,string)" 0 "Arc Duck" QUACK "$LORE3" --private-key "$BOB_KEY"
+send "$ARENA" "pitch(bytes32,uint256,string,string,string)" "$ELON" 0 "Dogecoin to Mars" DOGEMARS "$LORE1" --private-key "$ALICE_KEY"
+send "$ARENA" "pitch(bytes32,uint256,string,string,string)" "$ELON" 1 "X President" XPREZ "$LORE2" --private-key "$BOB_KEY"
+send "$ARENA" "pitch(bytes32,uint256,string,string,string)" "$CULTURE" 0 "Arc Duck" QUACK "$LORE3" --private-key "$BOB_KEY"
 send "$ARENA" "back(uint256,uint256,uint256,uint256,bytes)" 1 3000000 0 0 0x --private-key "$ALICE_KEY"
 send "$ARENA" "back(uint256,uint256,uint256,uint256,bytes)" 2 1000000 0 0 0x --private-key "$BOB_KEY"
 

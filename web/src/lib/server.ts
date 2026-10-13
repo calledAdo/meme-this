@@ -3,8 +3,8 @@ import { cache } from "react";
 import { createPublicClient, http, zeroAddress } from "viem";
 import { memeArenaAbi } from "./abi";
 import { ARENA, arc } from "./chain";
-import { decodeMeta, safeImage, type PitchMeta, type PromptMeta } from "./meta";
-import type { Backer, FeedData, PitchData, PromptData } from "./feed";
+import { decodeMeta, safeImage, safeSource, type EntityMeta, type PitchMeta } from "./meta";
+import type { Backer, EntityData, FeedData, PitchData, RaceData } from "./feed";
 
 // The public Arc RPC drops occasional requests; batch calls and retry with backoff.
 export const arcClient = createPublicClient({
@@ -30,48 +30,56 @@ function ttl<A extends unknown[], R>(ms: number, fn: (...a: A) => Promise<R>) {
   };
 }
 
-const read = <F extends "pitchCount" | "promptCount" | "launchCount" | "config">(functionName: F) =>
+const read = <F extends "pitchCount" | "raceCount" | "launchCount" | "config" | "getEntityIds">(functionName: F) =>
   arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName });
 
 const readPitch = (id: bigint) => arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getPitch", args: [id] });
-const readPrompt = (id: bigint) => arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getPrompt", args: [id] });
+const readRace = (id: bigint) => arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getRace", args: [id] });
+const readEntity = (id: `0x${string}`) => arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getEntity", args: [id] });
 
-async function promptMeta(uri: string): Promise<PromptMeta> {
-  if (uri.startsWith("https://")) {
-    try {
-      return await (await fetch(uri, { next: { revalidate: 3600 } })).json();
-    } catch {}
-  }
-  return decodeMeta<PromptMeta>(uri, { title: "Untitled prompt" });
-}
-
-async function toPrompt(id: bigint, pr: Awaited<ReturnType<typeof readPrompt>>): Promise<PromptData> {
-  const meta = await promptMeta(pr.uri);
+function toEntity(id: `0x${string}`, e: Awaited<ReturnType<typeof readEntity>>): EntityData {
+  const meta = decodeMeta<EntityMeta>(e.uri, { name: "Unknown" });
+  const kind = meta.kind ?? "topic";
   return {
-    id: id.toString(),
-    title: meta.title,
-    kind: meta.kind ?? "news",
-    sources: (meta.sources ?? []).filter((s) => s.startsWith("https://")),
-    host: pr.host,
-    end: Number(pr.end),
-    winner: pr.winner.toString(),
-    cancelled: pr.cancelled,
+    id,
+    slug: kind === "culture" ? "culture" : (meta.x ?? meta.name).toLowerCase().replace(/[^a-z0-9_]/g, ""),
+    name: meta.name,
+    kind,
+    x: meta.x,
+    active: e.active,
+    maxRaces: e.maxRaces,
+    window: e.window,
+    cooldown: e.cooldown,
+    cooldownUntil: Number(e.cooldownUntil),
   };
 }
 
-function toPitch(id: bigint, p: Awaited<ReturnType<typeof readPitch>>, prompt?: PromptData): PitchData {
+function toRace(id: bigint, r: Awaited<ReturnType<typeof readRace>>): RaceData {
+  return {
+    id: id.toString(),
+    entity: r.entity,
+    starter: r.starter,
+    start: Number(r.start),
+    end: Number(r.end),
+    winner: r.winner.toString(),
+    cancelled: r.cancelled,
+  };
+}
+
+function toPitch(id: bigint, p: Awaited<ReturnType<typeof readPitch>>, race: RaceData): PitchData {
   const pm = decodeMeta<PitchMeta>(p.uri, {});
   return {
     id: id.toString(),
-    promptId: p.promptId.toString(),
-    promptTitle: prompt?.title,
-    promptWinner: prompt?.winner ?? "0",
-    promptCancelled: prompt?.cancelled ?? false,
+    raceId: p.raceId.toString(),
+    entity: race.entity,
+    raceWinner: race.winner,
+    raceCancelled: race.cancelled,
     pitcher: p.pitcher,
     name: p.name,
     symbol: p.symbol,
     image: safeImage(pm.image),
     lore: pm.lore,
+    source: safeSource(pm.source),
     created: Number(p.created),
     expires: Number(p.expires),
     vetoed: p.vetoed,
@@ -85,31 +93,40 @@ function toPitch(id: bigint, p: Awaited<ReturnType<typeof readPitch>>, prompt?: 
 }
 
 const FEED_PITCHES = 80;
-const FEED_PROMPTS = 20;
+const FEED_RACES = 40;
 
 export const loadFeed = cache(ttl(4000, loadFeedUncached));
 
-/** The newest pitches and prompts, newest first. Status is derived on the client so countdowns stay live. */
+/** Entities, the newest races and pitches. Status is derived on the client so countdowns stay live. */
 async function loadFeedUncached(): Promise<FeedData> {
-  const [pitchCount, promptCount, launchCount, cfg] = await Promise.all([read("pitchCount"), read("promptCount"), read("launchCount"), read("config")]);
-  const promptIds: bigint[] = [];
-  for (let i = promptCount; i > 0n && promptIds.length < FEED_PROMPTS; i--) promptIds.push(i);
+  const [pitchCount, raceCount, launchCount, cfg, entityIds] = await Promise.all([
+    read("pitchCount"),
+    read("raceCount"),
+    read("launchCount"),
+    read("config"),
+    read("getEntityIds"),
+  ]);
+  const raceIds: bigint[] = [];
+  for (let i = raceCount; i > 0n && raceIds.length < FEED_RACES; i--) raceIds.push(i);
   const pitchIds: bigint[] = [];
   for (let i = pitchCount; i > 0n && pitchIds.length < FEED_PITCHES; i--) pitchIds.push(i);
 
-  const [rawPrompts, rawPitches] = await Promise.all([Promise.all(promptIds.map(readPrompt)), Promise.all(pitchIds.map(readPitch))]);
-  const prompts = await Promise.all(promptIds.map((id, i) => toPrompt(id, rawPrompts[i])));
-  const byId = new Map(prompts.map((p) => [p.id, p]));
-
-  // Pitches can answer prompts older than the newest few; fetch those too.
-  const missing = [...new Set(rawPitches.map((p) => p.promptId).filter((id) => id !== 0n && !byId.has(id.toString())))];
-  for (const pr of await Promise.all(missing.map(async (id) => toPrompt(id, await readPrompt(id))))) byId.set(pr.id, pr);
+  const [rawEntities, rawRaces, rawPitches] = await Promise.all([
+    Promise.all(entityIds.map(readEntity)),
+    Promise.all(raceIds.map(readRace)),
+    Promise.all(pitchIds.map(readPitch)),
+  ]);
+  const races = new Map(raceIds.map((id, i) => [id.toString(), toRace(id, rawRaces[i])]));
+  // Pitches can belong to races older than the newest few; fetch those too.
+  const missing = [...new Set(rawPitches.map((p) => p.raceId).filter((id) => !races.has(id.toString())))];
+  for (const [i, r] of (await Promise.all(missing.map(readRace))).entries()) races.set(missing[i].toString(), toRace(missing[i], r));
 
   return {
-    pitches: pitchIds.map((id, i) => toPitch(id, rawPitches[i], byId.get(rawPitches[i].promptId.toString()))),
-    prompts,
+    entities: entityIds.map((id, i) => toEntity(id, rawEntities[i])).filter((e) => e.active),
+    races: [...races.values()],
+    pitches: pitchIds.map((id, i) => toPitch(id, rawPitches[i], races.get(rawPitches[i].raceId.toString())!)),
     launches: Number(launchCount),
-    config: { target: cfg[0].toString(), minBack: cfg[1].toString(), maxPerPerson: cfg[2].toString(), pitchFee: cfg[3].toString(), lifetime: Number(cfg[4]) },
+    config: { target: cfg[0].toString(), minBack: cfg[1].toString(), maxPerPerson: cfg[2].toString(), pitchFee: cfg[3].toString() },
   };
 }
 
@@ -119,9 +136,26 @@ export const loadPitch = cache(async (idStr: string): Promise<PitchData | null> 
   const id = BigInt(idStr);
   const p = await readPitch(id);
   if (p.pitcher === zeroAddress) return null;
-  const prompt = p.promptId === 0n ? undefined : await toPrompt(p.promptId, await readPrompt(p.promptId));
-  return toPitch(id, p, prompt);
+  return toPitch(id, p, toRace(p.raceId, await readRace(p.raceId)));
 });
+
+/** Every pitch of an entity's races in the feed window, plus each race's full pitch list. */
+export async function loadEntityPitches(feed: FeedData, entityId: `0x${string}`): Promise<PitchData[]> {
+  const races = feed.races.filter((r) => r.entity === entityId);
+  const lists = await Promise.all(
+    races.map((r) => arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getRacePitches", args: [BigInt(r.id)] })),
+  );
+  const have = new Set(feed.pitches.map((p) => p.id));
+  const extra = lists.flatMap((ids, i) => ids.filter((id) => !have.has(id.toString())).map((id) => ({ id, race: races[i] })));
+  return Promise.all(extra.map(async ({ id, race }) => toPitch(id, await readPitch(id), race)));
+}
+
+/** The feed plus extra pitches (e.g. an old shared one), newest first, without duplicates. */
+export function withPitches(feed: FeedData, extra: PitchData[]): FeedData {
+  const seen = new Set(feed.pitches.map((p) => p.id));
+  const pitches = [...feed.pitches, ...extra.filter((p) => !seen.has(p.id))].sort((a, b) => Number(b.id) - Number(a.id));
+  return { ...feed, pitches };
+}
 
 // ---------------------------------------------------------------- backer lists
 
@@ -184,25 +218,4 @@ async function backersOfUncached(pitchId: bigint): Promise<Backer[]> {
     }
   }
   return [...state.values()].sort((x, y) => (BigInt(y.amount) > BigInt(x.amount) ? 1 : BigInt(y.amount) < BigInt(x.amount) ? -1 : 0));
-}
-
-/** A prompt and every pitch in it (the feed only holds the newest pitches). */
-export const loadPrompt = cache(async (idStr: string): Promise<{ prompt: PromptData; pitches: PitchData[] } | null> => {
-  if (!/^\d+$/.test(idStr) || idStr === "0") return null;
-  const id = BigInt(idStr);
-  const raw = await readPrompt(id);
-  if (raw.host === zeroAddress) return null;
-  const [prompt, ids] = await Promise.all([
-    toPrompt(id, raw),
-    arcClient.readContract({ address: ARENA, abi: memeArenaAbi, functionName: "getPromptPitches", args: [id] }),
-  ]);
-  const pitches = await Promise.all(ids.map(async (pid) => toPitch(pid, await readPitch(pid), prompt)));
-  return { prompt, pitches };
-});
-
-/** The feed plus extra pitches (e.g. an old shared one), newest first, without duplicates. */
-export function withPitches(feed: FeedData, extra: PitchData[]): FeedData {
-  const seen = new Set(feed.pitches.map((p) => p.id));
-  const pitches = [...feed.pitches, ...extra.filter((p) => !seen.has(p.id))].sort((a, b) => Number(b.id) - Number(a.id));
-  return { ...feed, pitches };
 }

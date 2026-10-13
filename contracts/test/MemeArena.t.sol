@@ -39,10 +39,11 @@ contract MemeArenaTest is Test {
 
     address owner = makeAddr("owner");
     address treasury = makeAddr("treasury");
-    address host = makeAddr("host");
     address pitcherA = makeAddr("pitcherA");
     address pitcherB = makeAddr("pitcherB");
     uint256 attesterKey = 0xA77E57;
+    bytes32 constant ELON = keccak256("x:elonmusk");
+    bytes32 constant CULTURE = keccak256("culture");
     address attester;
 
     function params() internal pure returns (MemeArena.LaunchParams memory) {
@@ -67,18 +68,28 @@ contract MemeArenaTest is Test {
         arena = new MemeArena(IERC20(address(usdc)), NPM, ROUTER, locker, owner, treasury, params());
         vm.startPrank(owner);
         locker.setArena(address(arena));
-        arena.setHost(host, true);
         arena.setAttester(attester);
-        // Production-like target so multi-backer tests have room: $100, $20 per person, 24h.
-        arena.setConfig(MemeArena.Config({target: 100e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0, lifetime: 1 days}));
+        // Production-like target so multi-backer tests have room: $100, $20 per person.
+        arena.setConfig(MemeArena.Config({target: 100e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0}));
+        arena.setEntity(ELON, true, 1, 1 days, 6 hours, "elon");
+        arena.setEntity(CULTURE, true, 10, 1 days, 0, "culture"); // roomy so generic tests can start many races
         vm.stopPrank();
     }
 
     // ------------------------------------------------------------ helpers
 
-    function _prompt() internal returns (uint256) {
-        vm.prank(host);
-        return arena.createPrompt(1 days, "ipfs://prompt");
+    /// Start a new race on `entity` with this pitch.
+    function _start(bytes32 entity, address who, string memory name, string memory symbol) internal returns (uint256) {
+        vm.prank(who);
+        return arena.pitch(entity, 0, name, symbol, "ipfs://pitch");
+    }
+
+    function _join(bytes32 entity, uint256 raceId, address who, string memory name, string memory symbol)
+        internal
+        returns (uint256)
+    {
+        vm.prank(who);
+        return arena.pitch(entity, raceId, name, symbol, "ipfs://pitch");
     }
 
     function _fund(address who, uint256 amount) internal {
@@ -87,9 +98,9 @@ contract MemeArenaTest is Test {
         usdc.approve(address(arena), type(uint256).max);
     }
 
-    function _pitch(uint256 promptId, address who, string memory name, string memory symbol) internal returns (uint256) {
-        vm.prank(who);
-        return arena.pitch(promptId, name, symbol, "ipfs://pitch");
+    /// Generic pitch in its own Culture race (`_pitch(0, …)` reads as "a standalone pitch").
+    function _pitch(uint256, address who, string memory name, string memory symbol) internal returns (uint256) {
+        return _start(CULTURE, who, name, symbol);
     }
 
     function _back(uint256 pitchId, address who, uint256 amount) internal {
@@ -261,63 +272,108 @@ contract MemeArenaTest is Test {
         _pitch(0, pitcherB, "Celebrity Coin", "CELEB");
     }
 
-    // ------------------------------------------------------------ prompts
+    // ------------------------------------------------------------ entities and races
 
-    function test_PromptRace_firstToRipenWins_othersRefund() public {
-        uint256 pr = _prompt();
-        uint256 a = _pitch(pr, pitcherA, "Money Printer", "BRRR");
-        uint256 b = _pitch(pr, pitcherB, "Rate Snip", "SNIP");
+    function test_EntityRace_firstToFillWins_rivalsRefund_starterIsHost() public {
+        uint256 a = _start(ELON, pitcherA, "Money Printer", "BRRR");
+        uint256 race = arena.getPitch(a).raceId;
+        uint256 b = _join(ELON, race, pitcherB, "Rate Snip", "SNIP");
         uint256 free = _pitch(0, pitcherB, "Unrelated", "FREE");
+        assertEq(arena.getPitch(b).expires, arena.getPitch(a).expires); // one shared deadline
         _backers(b, 3, 100, 20e6); // b leads with $60 ...
         _backers(free, 1, 300, 20e6);
-        _backers(a, 5, 1, 20e6); // ... but a ripens first
+        _backers(a, 5, 1, 20e6); // ... but a fills first
 
-        assertEq(arena.getPrompt(pr).winner, a);
+        assertEq(arena.getRace(race).winner, a);
         assertEq(uint8(_status(a)), uint8(MemeArena.Status.Launched));
         assertEq(uint8(_status(b)), uint8(MemeArena.Status.Lost));
-        assertEq(uint8(_status(free)), uint8(MemeArena.Status.Live)); // freestyle pitches are not in the race
+        assertEq(uint8(_status(free)), uint8(MemeArena.Status.Live)); // other entities are not in the race
 
         vm.prank(makeAddr("backer100"));
         (, uint256 refund) = arena.claim(b);
         assertEq(refund, 20e6);
 
         vm.expectRevert(MemeArena.BadState.selector);
-        _pitch(pr, pitcherA, "Too Late", "LATE"); // a won prompt takes no new pitches
+        _join(ELON, race, pitcherA, "Too Late", "LATE"); // a won race takes no new pitches
 
-        // The prompt's host earns the host share of the locker fees.
+        // Whoever started the race earns the host share of the locker fees.
         (, address lockedHost,,) = locker.positions(arena.getPitch(a).lpTokenId);
-        assertEq(lockedHost, host);
+        assertEq(lockedHost, pitcherA);
     }
 
-    function test_PromptCancelRefundsAll() public {
-        uint256 pr = _prompt();
-        uint256 a = _pitch(pr, pitcherA, "Alpha", "AAA");
-        _backers(a, 2, 1, 10e6);
+    function test_EntityRace_oneLiveRace_thenCooldownAfterBirth() public {
+        uint256 a = _start(ELON, pitcherA, "Alpha", "AAA");
+        vm.expectRevert(MemeArena.EntityBusy.selector);
+        _start(ELON, pitcherB, "Bravo", "BBB"); // a race is already live
+        assertFalse(arena.canStartRace(ELON));
+
+        _backers(a, 5, 1, 20e6); // born
+        vm.expectRevert(MemeArena.EntityBusy.selector);
+        _start(ELON, pitcherB, "Bravo", "BBB"); // cooling down
+
+        vm.warp(vm.getBlockTimestamp() + 6 hours);
+        assertTrue(arena.canStartRace(ELON));
+        _start(ELON, pitcherB, "Bravo", "BBB");
+        assertEq(arena.liveRaces(ELON).length, 1);
+    }
+
+    function test_EntityRace_noFill_refundsAndFreesEntityWithoutCooldown() public {
+        uint256 a = _start(ELON, pitcherA, "Alpha", "AAA");
+        _backers(a, 1, 1, 10e6);
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        assertEq(uint8(_status(a)), uint8(MemeArena.Status.Expired));
+        vm.prank(makeAddr("backer1"));
+        (, uint256 refund) = arena.claim(a);
+        assertEq(refund, 10e6);
+        _start(ELON, pitcherB, "Bravo", "BBB"); // free again right away
+    }
+
+    function test_EntityRace_cannotJoinAfterDeadline() public {
+        uint256 a = _start(ELON, pitcherA, "Alpha", "AAA");
+        uint256 race = arena.getPitch(a).raceId;
+        vm.warp(vm.getBlockTimestamp() + 1 days);
+        vm.expectRevert(MemeArena.BadState.selector);
+        _join(ELON, race, pitcherB, "Late", "LATE");
+        vm.expectRevert(MemeArena.BadState.selector);
+        _join(CULTURE, race, pitcherB, "Wrong", "WRONG"); // race belongs to another entity
+    }
+
+    function test_CultureAllowsParallelRaces() public {
         vm.prank(owner);
-        arena.cancelPrompt(pr, "story was false");
+        arena.setEntity(CULTURE, true, 3, 3 days, 0, "culture");
+        _start(CULTURE, pitcherA, "One", "ONE");
+        _start(CULTURE, pitcherA, "Two", "TWO");
+        _start(CULTURE, pitcherA, "Three", "THREE");
+        vm.expectRevert(MemeArena.EntityBusy.selector);
+        _start(CULTURE, pitcherA, "Four", "FOUR");
+        assertEq(arena.liveRaces(CULTURE).length, 3);
+    }
+
+    function test_CancelRaceRefundsAll() public {
+        uint256 a = _start(ELON, pitcherA, "Alpha", "AAA");
+        _backers(a, 2, 1, 10e6);
+        uint256 race = arena.getPitch(a).raceId;
+        vm.prank(owner);
+        arena.cancelRace(race, "story was false");
         assertEq(uint8(_status(a)), uint8(MemeArena.Status.Lost));
         vm.prank(makeAddr("backer1"));
         (, uint256 refund) = arena.claim(a);
         assertEq(refund, 10e6);
+        _start(ELON, pitcherB, "Bravo", "BBB"); // entity free again
     }
 
-    function test_PromptClosesForPitchesAtEnd() public {
-        uint256 pr = _prompt();
-        vm.warp(vm.getBlockTimestamp() + 1 days);
-        vm.expectRevert(MemeArena.BadTiming.selector);
-        _pitch(pr, pitcherA, "Late", "LATE");
-    }
-
-    function test_OnlyHostsOpenPrompts_unlessOpen() public {
-        address judge = makeAddr("judge");
-        vm.prank(judge);
-        vm.expectRevert(MemeArena.NotHost.selector);
-        arena.createPrompt(1 hours, "");
+    function test_OnlyGuardianApprovesEntities_unknownEntityRejected() public {
+        bytes32 rando = keccak256("x:someprivateperson");
+        vm.expectRevert(MemeArena.UnknownEntity.selector);
+        _start(rando, pitcherA, "Alpha", "AAA");
+        vm.prank(pitcherA);
+        vm.expectRevert(MemeArena.NotGuardian.selector);
+        arena.setEntity(rando, true, 1, 1 days, 6 hours, "");
         vm.prank(owner);
-        arena.setOpenPrompts(true);
-        vm.prank(judge);
-        uint256 pr = arena.createPrompt(1 hours, "");
-        assertEq(arena.getPrompt(pr).host, judge);
+        arena.setEntity(ELON, false, 1, 1 days, 6 hours, "elon"); // retired
+        vm.expectRevert(MemeArena.UnknownEntity.selector);
+        _start(ELON, pitcherA, "Alpha", "AAA");
+        assertEq(arena.getEntityIds().length, 2); // updates don't duplicate the list
     }
 
     // ------------------------------------------------------------ identity
@@ -383,16 +439,16 @@ contract MemeArenaTest is Test {
     function test_InvalidSymbolRejected() public {
         vm.startPrank(pitcherA);
         vm.expectRevert(MemeArena.InvalidSymbol.selector);
-        arena.pitch(0, "x", "brrr", "");
+        arena.pitch(CULTURE, 0, "x", "brrr", "");
         vm.expectRevert(MemeArena.InvalidSymbol.selector);
-        arena.pitch(0, "x", "TOOLONGTICKER", "");
+        arena.pitch(CULTURE, 0, "x", "TOOLONGTICKER", "");
         vm.stopPrank();
     }
 
     function test_PitchingIsFreeByDefault_feeGoesToTreasuryWhenSet() public {
         _pitch(0, pitcherA, "Free", "FREE"); // no USDC, no approval
         vm.prank(owner);
-        arena.setConfig(MemeArena.Config({target: 100e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0.1e6, lifetime: 1 days}));
+        arena.setConfig(MemeArena.Config({target: 100e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0.1e6}));
         _fund(pitcherA, 0.1e6);
         _pitch(0, pitcherA, "Paid", "PAID");
         assertEq(arena.credits(treasury), 0.1e6);
@@ -400,7 +456,7 @@ contract MemeArenaTest is Test {
 
     function test_DemoConfig_singleBackerLaunches() public {
         vm.prank(owner);
-        arena.setConfig(MemeArena.Config({target: 5e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0, lifetime: 1 days}));
+        arena.setConfig(MemeArena.Config({target: 5e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0}));
         uint256 id = _pitch(0, pitcherA, "Arc Duck", "QUACK");
         address solo = makeAddr("solo");
         _back(id, solo, 5e6);
@@ -449,9 +505,9 @@ contract MemeArenaTest is Test {
         vm.stopPrank();
 
         locker.collect(p.lpTokenId);
-        // 1% of the backers' $100 first buy + 1% of the $1,000 buy. Freestyle: the treasury is the host.
+        // 1% of the backers' $100 first buy + 1% of the $1,000 buy. The race starter (pitcherA) is the host.
         uint256 usdcFees = locker.credits(address(usdc), pitcherA) + locker.credits(address(usdc), treasury);
+        assertApproxEqAbs(locker.credits(address(usdc), pitcherA), usdcFees * 7_000 / 10_000, 2); // pitcher 50% + host 20%
         assertApproxEqAbs(usdcFees, 11e6, 2);
-        assertEq(locker.credits(address(usdc), pitcherA), usdcFees * 5_000 / 10_000);
     }
 }

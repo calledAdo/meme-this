@@ -4,7 +4,7 @@ import { SITE_URL } from "./chain";
 export type CardParams = {
   sym: string;
   name?: string;
-  round: string; // prompt title, or "Freestyle"
+  round: string; // entity name, or "Culture"
   total: number; // USDC
   backers?: number;
   rank?: number;

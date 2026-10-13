@@ -74,8 +74,12 @@ export function usePlayer(pitchIds: string[]) {
     withdraw: (pitchId: string, symbol: string) => tx.run(`Pulled your backing from $${symbol}`, [call("Withdraw", "withdraw", [BigInt(pitchId)])], refetch),
     claim: (pitchId: string, coins: boolean) =>
       tx.run(coins ? "Coins claimed" : "Refund claimed", [call(coins ? "Claim coins" : "Claim refund", "claim", [BigInt(pitchId)])], refetch),
-    pitch: (fee: bigint, promptId: string, name: string, symbol: string, uri: string) =>
-      tx.run(`Pitched $${symbol}`, [approve(fee), call(`Pitch $${symbol}`, "pitch", [BigInt(promptId), name, symbol, uri])], refetch),
+    /** `raceId` "0" starts a new race on the entity; otherwise the pitch joins that live race. */
+    pitch: (fee: bigint, entityId: `0x${string}`, raceId: string, name: string, symbol: string, uri: string) =>
+      tx.run(raceId === "0" ? `Pitched $${symbol} and started the race` : `Pitched $${symbol}`, [
+        approve(fee),
+        call(`Pitch $${symbol}`, "pitch", [entityId, BigInt(raceId), name, symbol, uri]),
+      ], refetch),
   };
 
   return {

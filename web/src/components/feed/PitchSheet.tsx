@@ -8,15 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { explorerAddress, uniswapSwapUrl } from "@/lib/chain";
-import { STATUS_LABEL, progress, remaining, statusOf, type Backer, type PitchData } from "@/lib/feed";
+import { STATUS_LABEL, progress, remaining, statusOf, unofficial, type Backer, type EntityData, type PitchData } from "@/lib/feed";
 import { fmtLeft, fmtUsdc, short, usdc } from "@/lib/format";
+import { sourceHost, tweetId } from "@/lib/meta";
 import { cn } from "@/lib/cn";
 import type { Player } from "./usePlayer";
 import { Thumb } from "./PitchRow";
 
 const CHIPS = [1, 2, 5, 10, 20];
 
-export function PitchSheet({ pitch, now, player, onClose, onShare }: { pitch: PitchData; now: number; player: Player; onClose: () => void; onShare: (id: string) => void }) {
+export function PitchSheet({ pitch, entity, now, player, onClose, onShare }: { pitch: PitchData; entity?: EntityData; now: number; player: Player; onClose: () => void; onShare: (id: string) => void }) {
   const s = statusOf(pitch, now);
   const my = player.mine.get(pitch.id);
   const left = usdc(remaining(pitch));
@@ -103,15 +104,25 @@ export function PitchSheet({ pitch, now, player, onClose, onShare }: { pitch: Pi
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">
                 <Badge tone={s === "launched" ? "ink" : s === "live" ? "live" : s === "vetoed" ? "danger" : "neutral"}>{STATUS_LABEL[s]}</Badge>
-                {pitch.promptId !== "0" && (
-                  <Link href={`/prompt/${pitch.promptId}`}>
-                    <Badge>for “{pitch.promptTitle ?? `prompt ${pitch.promptId}`}”</Badge>
+                {entity && (
+                  <Link href={`/e/${entity.slug}`}>
+                    <Badge>{entity.kind === "culture" ? "Culture" : `about ${entity.name}`}</Badge>
                   </Link>
                 )}
               </div>
               {pitch.lore && <p className="text-sm text-black/70">{pitch.lore}</p>}
             </div>
           </div>
+
+          {pitch.source && (
+            <a href={pitch.source} target="_blank" rel="noreferrer" className="flex items-center justify-between gap-3 rounded-lg border border-black/10 px-4 py-3 text-sm transition-colors hover:bg-black/[0.02]">
+              <span>
+                <span className="text-xs text-black/50">Source</span>
+                <span className="block font-medium tracking-tight">{tweetId(pitch.source) ? "View the post on X" : sourceHost(pitch.source)}</span>
+              </span>
+              <ArrowUpRight className="size-4 text-black/40" />
+            </a>
+          )}
 
           <div className="space-y-2">
             <div className="flex items-baseline justify-between">
@@ -124,7 +135,7 @@ export function PitchSheet({ pitch, now, player, onClose, onShare }: { pitch: Pi
             <div className="flex justify-between text-xs text-black/50">
               <span>{pitch.backers} {pitch.backers === 1 ? "backer" : "backers"}{pitch.verifiedBackers > 0 && ` · ${pitch.verifiedBackers} verified`}</span>
               <span>
-                {s === "live" ? `${fmtLeft(pitch.expires - now)} left` : s === "launched" ? "Coin born" : s === "lost" ? "Another pitch won this prompt · refunds open" : s === "expired" ? "Didn't fill in time · refunds open" : "Removed by the moderator · refunds open"}
+                {s === "live" ? `${fmtLeft(pitch.expires - now)} left` : s === "launched" ? "Coin born" : s === "lost" ? "Another pitch won this race · refunds open" : s === "expired" ? "Didn't fill in time · refunds open" : "Removed by the moderator · refunds open"}
               </span>
             </div>
           </div>
@@ -167,6 +178,7 @@ export function PitchSheet({ pitch, now, player, onClose, onShare }: { pitch: Pi
             )}
           </div>
           <p className="font-mono text-xs text-black/40">pitched by {short(pitch.pitcher)}</p>
+          {entity && <p className="text-xs text-black/40">{unofficial(entity)}</p>}
         </div>
       </DialogContent>
     </Dialog>

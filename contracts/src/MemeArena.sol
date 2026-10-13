@@ -14,12 +14,12 @@ import {LpLocker} from "./LpLocker.sol";
 import {INonfungiblePositionManager, ISwapRouter02, IUniswapV3Pool} from "./interfaces/IUniswapV3.sol";
 
 /// @title MemeArena
-/// @notice The Meme This game, without rounds. Anyone pitches a coin (name, ticker, image) for free; players back
-///         pitches with USDC. The back that takes a pitch to its target launches the coin in that same transaction:
-///         token, locked Uniswap v3 pool, and every backer's USDC as the first buy. Nobody has to press "close".
-///         A pitch that is not ripe before it expires is refunded in full.
-///         Pitches may answer a prompt (a news event or theme): the first pitch in a prompt to ripen wins it, and
-///         every other pitch in that prompt becomes refundable at once, so each event gets exactly one coin.
+/// @notice The Meme This game. Memes are pitched about an entity (a public figure, an organisation, a topic, or
+///         Culture). The first pitch on an idle entity starts a race; later pitches join it and share its deadline.
+///         Players back pitches with USDC. The back that takes a pitch to its target launches the coin in that same
+///         transaction (token, locked Uniswap v3 pool, every backer's USDC as the first buy) and wins the race:
+///         rival pitches become refundable at once and the entity cools down before its next race. A race that ends
+///         with nothing filled refunds everyone. Nobody has to open, close or launch anything.
 /// @dev Arc notes: USDC is used only through its 6-decimal ERC-20 interface; no randomness (PREVRANDAO is 0);
 ///      payouts are pulled by their recipient so a blocklisted address cannot freeze anything.
 contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
@@ -32,8 +32,9 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
     int24 public constant MAX_TICK = 887_200;
     uint256 public constant WEIGHT_ONE = 1_000_000; // 1.0x
     uint256 public constant WEIGHT_BONUS = 250_000; // +0.25x for a dollar added the second a pitch appears
-    uint32 public constant MIN_LIFETIME = 10 minutes;
-    uint32 public constant MAX_LIFETIME = 7 days;
+    uint32 public constant MIN_WINDOW = 10 minutes;
+    uint32 public constant MAX_WINDOW = 7 days;
+    uint8 public constant MAX_PARALLEL = 10;
     address private constant DEAD = 0x000000000000000000000000000000000000dEaD;
 
     bytes32 public constant PASS_TYPEHASH = keccak256("Pass(address wallet,uint256 identityId,uint256 deadline)");
@@ -47,7 +48,7 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         Launched, // ripened: the coin exists
         Expired, // not ripe before its deadline: refundable
         Vetoed, // removed by the guardian: refundable
-        Lost // its prompt was won by another pitch, or cancelled: refundable
+        Lost // its race was won by another pitch, or cancelled: refundable
     }
 
     struct Config {
@@ -55,7 +56,17 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         uint96 minBack; // smallest backing a wallet may hold (the final top-up to target is exempt)
         uint96 maxPerPerson; // cap on one wallet's backing of one pitch
         uint96 pitchFee; // paid to the treasury; zero means free pitching
-        uint32 lifetime; // seconds a pitch has to ripen
+    }
+
+    /// @notice Who or what memes are about. Approved by the guardian so only public figures, organisations and
+    ///         topics qualify (never private individuals). Metadata (name, kind, X handle) lives in `uri`.
+    struct Entity {
+        bool active;
+        uint8 maxRaces; // live races allowed at once (1 for people and companies, more for Culture)
+        uint32 window; // seconds a race runs
+        uint32 cooldown; // seconds after a birth before the next race may start
+        uint64 cooldownUntil;
+        string uri;
     }
 
     /// @notice Launch geometry. Variant A: coin is token0, liquidity [tickA, MAX_TICK], pool starts at sqrtA
@@ -68,17 +79,17 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         uint160 sqrtB;
     }
 
-    struct Prompt {
-        address host;
-        uint64 created;
-        uint64 end; // no new pitches after this
+    struct Race {
+        bytes32 entity;
+        address starter; // pitched first; earns the host share of the winner's trading fees
+        uint64 start;
+        uint64 end; // shared deadline of every pitch in the race
         bool cancelled;
         uint256 winner; // pitch id, 0 while unwon
-        string uri; // title, kind, source links
     }
 
     struct Pitch {
-        uint256 promptId; // 0 = freestyle
+        uint256 raceId;
         address pitcher;
         uint64 created;
         uint64 expires;
@@ -91,7 +102,7 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         uint256 weighted; // conviction-weighted USDC
         string name;
         string symbol;
-        string uri; // image + lore
+        string uri; // image, lore, source link
         address token;
         uint256 tokensBought;
         uint256 lpTokenId;
@@ -117,15 +128,16 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
     Config public config;
     LaunchParams public launchParams;
 
-    mapping(address => bool) public isHost;
-    bool public openPrompts; // anyone may open a prompt (they become its host)
+    bytes32[] internal _entityIds;
+    mapping(bytes32 entityId => Entity) internal _entities;
+    mapping(bytes32 entityId => uint256[]) internal _openRaces; // may include dead races; pruned when racing
 
-    uint256 public promptCount;
+    uint256 public raceCount;
     uint256 public pitchCount;
     uint256 public launchCount;
-    mapping(uint256 promptId => Prompt) internal _prompts;
+    mapping(uint256 raceId => Race) internal _races;
     mapping(uint256 pitchId => Pitch) internal _pitches;
-    mapping(uint256 promptId => uint256[]) internal _promptPitches;
+    mapping(uint256 raceId => uint256[]) internal _racePitches;
     mapping(uint256 pitchId => mapping(address wallet => Backing)) public backings;
     mapping(uint256 pitchId => mapping(uint256 identityId => address wallet)) public walletOfIdentity;
 
@@ -137,11 +149,12 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
 
     // ---------------------------------------------------------------- events
 
-    event PromptCreated(uint256 indexed promptId, address indexed host, uint64 end, string uri);
-    event PromptCancelled(uint256 indexed promptId, string reason);
+    event EntitySet(bytes32 indexed entityId, bool active, uint8 maxRaces, uint32 window, uint32 cooldown, string uri);
+    event RaceStarted(uint256 indexed raceId, bytes32 indexed entityId, address indexed starter, uint64 end);
+    event RaceCancelled(uint256 indexed raceId, string reason);
     event Pitched(
         uint256 indexed pitchId,
-        uint256 indexed promptId,
+        uint256 indexed raceId,
         address indexed pitcher,
         string name,
         string symbol,
@@ -154,7 +167,7 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
     event Vetoed(uint256 indexed pitchId, string reason);
     event Launched(
         uint256 indexed pitchId,
-        uint256 indexed promptId,
+        uint256 indexed raceId,
         address token,
         address pool,
         uint256 lpTokenId,
@@ -167,8 +180,9 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
 
     // ---------------------------------------------------------------- errors
 
-    error NotHost();
     error NotGuardian();
+    error UnknownEntity();
+    error EntityBusy();
     error BadTiming();
     error BadState();
     error BadAmount();
@@ -200,21 +214,11 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         locker = locker_;
         treasury = treasury_;
         guardian = owner_;
-        config = Config({target: 5e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0, lifetime: 1 days});
+        config = Config({target: 2e6, minBack: 1e6, maxPerPerson: 20e6, pitchFee: 0});
         launchParams = params_;
     }
 
     // ---------------------------------------------------------------- admin
-
-    function setHost(address host, bool allowed) external onlyOwner {
-        isHost[host] = allowed;
-        emit ConfigUpdated();
-    }
-
-    function setOpenPrompts(bool open) external onlyOwner {
-        openPrompts = open;
-        emit ConfigUpdated();
-    }
 
     function setGuardian(address guardian_) external onlyOwner {
         guardian = guardian_;
@@ -232,10 +236,9 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         emit ConfigUpdated();
     }
 
-    /// @notice Applies to pitches created after this call; live pitches keep their target, cap and deadline.
+    /// @notice Applies to pitches created after this call; live pitches keep their target and cap.
     function setConfig(Config calldata c) external onlyOwner {
         if (c.minBack == 0 || c.target < c.minBack || c.maxPerPerson < c.minBack) revert BadAmount();
-        if (c.lifetime < MIN_LIFETIME || c.lifetime > MAX_LIFETIME) revert BadTiming();
         config = c;
         emit ConfigUpdated();
     }
@@ -263,44 +266,46 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         emit Vetoed(pitchId, reason);
     }
 
-    /// @notice Cancel an unwon prompt (false story, emergency). Every pitch in it becomes refundable.
-    function cancelPrompt(uint256 promptId, string calldata reason) external {
+    /// @notice Cancel a live race (false story, emergency). Every pitch in it becomes refundable.
+    function cancelRace(uint256 raceId, string calldata reason) external {
         if (msg.sender != guardian) revert NotGuardian();
-        Prompt storage pr = _prompts[promptId];
-        if (pr.host == address(0) || pr.cancelled || pr.winner != 0) revert BadState();
-        pr.cancelled = true;
-        emit PromptCancelled(promptId, reason);
+        Race storage r = _races[raceId];
+        if (r.start == 0 || r.cancelled || r.winner != 0) revert BadState();
+        r.cancelled = true;
+        emit RaceCancelled(raceId, reason);
     }
 
-    // ---------------------------------------------------------------- hosts
-
-    /// @notice Open a prompt for `duration` seconds of pitching. The first pitch in it to ripen wins it.
-    function createPrompt(uint32 duration, string calldata uri) external whenNotPaused returns (uint256 id) {
-        if (!isHost[msg.sender] && !openPrompts) revert NotHost();
-        if (duration < MIN_LIFETIME || duration > MAX_LIFETIME) revert BadTiming();
-        id = ++promptCount;
-        Prompt storage pr = _prompts[id];
-        pr.host = msg.sender;
-        pr.created = uint64(block.timestamp);
-        pr.end = uint64(block.timestamp) + duration;
-        pr.uri = uri;
-        emit PromptCreated(id, msg.sender, pr.end, uri);
+    /// @notice Approve, update or retire an entity. Only public figures, organisations and topics qualify.
+    function setEntity(bytes32 entityId, bool active, uint8 maxRaces, uint32 window, uint32 cooldown, string calldata uri)
+        external
+    {
+        if (msg.sender != guardian) revert NotGuardian();
+        if (entityId == bytes32(0) || maxRaces == 0 || maxRaces > MAX_PARALLEL) revert BadState();
+        if (window < MIN_WINDOW || window > MAX_WINDOW || cooldown > MAX_WINDOW) revert BadTiming();
+        Entity storage e = _entities[entityId];
+        if (bytes(e.uri).length == 0 && e.window == 0) _entityIds.push(entityId);
+        e.active = active;
+        e.maxRaces = maxRaces;
+        e.window = window;
+        e.cooldown = cooldown;
+        e.uri = uri;
+        emit EntitySet(entityId, active, maxRaces, window, cooldown, uri);
     }
 
     // ---------------------------------------------------------------- players
 
-    /// @notice Pitch a coin. `promptId` 0 is freestyle. Tickers and names are unique among live and launched pitches.
-    function pitch(uint256 promptId, string calldata name, string calldata symbol, string calldata uri)
+    /// @notice Pitch a coin about an entity. `raceId` 0 starts a new race (the entity must be idle and out of
+    ///         cooldown); otherwise the pitch joins that live race. Tickers and names are unique among live and
+    ///         launched pitches.
+    function pitch(bytes32 entityId, uint256 raceId, string calldata name, string calldata symbol, string calldata uri)
         external
         nonReentrant
         whenNotPaused
         returns (uint256 id)
     {
-        if (promptId != 0) {
-            Prompt storage pr = _prompts[promptId];
-            if (pr.host == address(0) || pr.cancelled || pr.winner != 0) revert BadState();
-            if (block.timestamp >= pr.end) revert BadTiming();
-        }
+        if (raceId == 0) raceId = _startRace(entityId);
+        else if (_races[raceId].entity != entityId || !_raceLive(raceId)) revert BadState();
+
         _checkSymbol(symbol);
         if (bytes(name).length == 0 || bytes(name).length > 32) revert InvalidName();
         bytes32 sKey = keccak256(bytes(symbol));
@@ -310,10 +315,10 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         Config memory c = config;
         id = ++pitchCount;
         Pitch storage p = _pitches[id];
-        p.promptId = promptId;
+        p.raceId = raceId;
         p.pitcher = msg.sender;
         p.created = uint64(block.timestamp);
-        p.expires = uint64(block.timestamp) + c.lifetime;
+        p.expires = _races[raceId].end;
         p.target = c.target;
         p.maxPerPerson = c.maxPerPerson;
         p.name = name;
@@ -321,13 +326,13 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         p.uri = uri;
         symbolHolder[sKey] = id;
         nameHolder[nKey] = id;
-        if (promptId != 0) _promptPitches[promptId].push(id);
+        _racePitches[raceId].push(id);
 
         if (c.pitchFee > 0) {
             credits[treasury] += c.pitchFee;
             usdc.safeTransferFrom(msg.sender, address(this), c.pitchFee);
         }
-        emit Pitched(id, promptId, msg.sender, name, symbol, uri, c.target, p.expires);
+        emit Pitched(id, raceId, msg.sender, name, symbol, uri, c.target, p.expires);
     }
 
     /// @notice Back a live pitch. Anything beyond what the pitch needs to ripen is not taken.
@@ -422,10 +427,8 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         if (p.pitcher == address(0)) return Status.None;
         if (p.token != address(0)) return Status.Launched;
         if (p.vetoed) return Status.Vetoed;
-        if (p.promptId != 0) {
-            Prompt storage pr = _prompts[p.promptId];
-            if (pr.cancelled || pr.winner != 0) return Status.Lost;
-        }
+        Race storage r = _races[p.raceId];
+        if (r.cancelled || r.winner != 0) return Status.Lost;
         if (block.timestamp >= p.expires) return Status.Expired;
         return Status.Live;
     }
@@ -443,12 +446,39 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         return _pitches[pitchId];
     }
 
-    function getPrompt(uint256 promptId) external view returns (Prompt memory) {
-        return _prompts[promptId];
+    function getRace(uint256 raceId) external view returns (Race memory) {
+        return _races[raceId];
     }
 
-    function getPromptPitches(uint256 promptId) external view returns (uint256[] memory) {
-        return _promptPitches[promptId];
+    function getRacePitches(uint256 raceId) external view returns (uint256[] memory) {
+        return _racePitches[raceId];
+    }
+
+    function getEntity(bytes32 entityId) external view returns (Entity memory) {
+        return _entities[entityId];
+    }
+
+    function getEntityIds() external view returns (bytes32[] memory) {
+        return _entityIds;
+    }
+
+    /// @notice Live races of an entity right now.
+    function liveRaces(bytes32 entityId) public view returns (uint256[] memory out) {
+        uint256[] storage all = _openRaces[entityId];
+        uint256 n;
+        out = new uint256[](all.length);
+        for (uint256 i; i < all.length; ++i) {
+            if (_raceLive(all[i])) out[n++] = all[i];
+        }
+        assembly {
+            mstore(out, n)
+        }
+    }
+
+    /// @notice Whether a new race on this entity may start now.
+    function canStartRace(bytes32 entityId) public view returns (bool) {
+        Entity storage e = _entities[entityId];
+        return e.active && block.timestamp >= e.cooldownUntil && liveRaces(entityId).length < e.maxRaces;
     }
 
     function passDigest(address wallet, uint256 identityId, uint256 deadline) public view returns (bytes32) {
@@ -459,12 +489,11 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
 
     function _launch(uint256 pitchId, Pitch storage p) private {
         LaunchParams memory lp = launchParams;
-        address host = treasury;
-        if (p.promptId != 0) {
-            Prompt storage pr = _prompts[p.promptId];
-            pr.winner = pitchId; // every rival pitch in this prompt is now Lost
-            host = pr.host;
-        }
+        Race storage r = _races[p.raceId];
+        r.winner = pitchId; // every rival pitch in this race is now Lost
+        address host = r.starter;
+        Entity storage e = _entities[r.entity];
+        e.cooldownUntil = uint64(block.timestamp) + e.cooldown;
 
         MemeToken token = new MemeToken{salt: keccak256(abi.encode(pitchId, block.number))}(
             p.name, p.symbol, p.uri, pitchId, address(this)
@@ -518,7 +547,37 @@ contract MemeArena is Ownable2Step, ReentrancyGuard, Pausable, EIP712 {
         p.tokensBought = bought;
         p.lpTokenId = lpTokenId;
         launchCount++;
-        emit Launched(pitchId, p.promptId, address(token), pool, lpTokenId, raised, bought);
+        emit Launched(pitchId, p.raceId, address(token), pool, lpTokenId, raised, bought);
+    }
+
+    function _raceLive(uint256 raceId) private view returns (bool) {
+        Race storage r = _races[raceId];
+        return r.start != 0 && !r.cancelled && r.winner == 0 && block.timestamp < r.end;
+    }
+
+    function _startRace(bytes32 entityId) private returns (uint256 raceId) {
+        Entity storage e = _entities[entityId];
+        if (!e.active) revert UnknownEntity();
+        if (block.timestamp < e.cooldownUntil) revert EntityBusy();
+
+        // Drop dead races from the open list, then check for a free slot.
+        uint256[] storage open = _openRaces[entityId];
+        for (uint256 i = open.length; i > 0; --i) {
+            if (!_raceLive(open[i - 1])) {
+                open[i - 1] = open[open.length - 1];
+                open.pop();
+            }
+        }
+        if (open.length >= e.maxRaces) revert EntityBusy();
+
+        raceId = ++raceCount;
+        Race storage r = _races[raceId];
+        r.entity = entityId;
+        r.starter = msg.sender;
+        r.start = uint64(block.timestamp);
+        r.end = uint64(block.timestamp) + e.window;
+        open.push(raceId);
+        emit RaceStarted(raceId, entityId, msg.sender, r.end);
     }
 
     /// @dev A holder blocks a ticker / name while it is live or launched.

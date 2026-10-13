@@ -12,12 +12,9 @@ import {INonfungiblePositionManager, ISwapRouter02} from "../src/interfaces/IUni
 ///
 /// Env:
 ///   TREASURY      protocol fee recipient (required)
-///   HOST          address allowed to open prompts, e.g. the news desk (required)
 ///   ATTESTER      Meme This pass signer (required)
 ///   TARGET        USDC (6 decimals) that makes a pitch ripe and launches it (default 2e6 for the demo)
-///   LIFETIME      seconds a pitch has to ripen before it is refundable (default 86400)
 ///   PITCH_FEE     USDC, 6 decimals (default 0: free pitching)
-///   OPEN_PROMPTS  anyone may open a prompt (default false)
 ///   USDC          local forks only; defaults to Arc USDC 0x3600…0000
 ///
 /// Run (the broadcaster becomes owner and guardian):
@@ -31,14 +28,12 @@ contract Deploy is Script {
         // USDC override exists only for local forks, where Arc's native USDC predeploy is unavailable.
         IERC20 usdc = IERC20(vm.envOr("USDC", address(0x3600000000000000000000000000000000000000)));
         address treasury = vm.envAddress("TREASURY");
-        address host = vm.envAddress("HOST");
         address attester = vm.envAddress("ATTESTER");
         MemeArena.Config memory cfg = MemeArena.Config({
             target: uint96(vm.envOr("TARGET", uint256(2e6))),
             minBack: 1e6,
             maxPerPerson: 20e6,
-            pitchFee: uint96(vm.envOr("PITCH_FEE", uint256(0))),
-            lifetime: uint32(vm.envOr("LIFETIME", uint256(1 days)))
+            pitchFee: uint96(vm.envOr("PITCH_FEE", uint256(0)))
         });
 
         // Starting value ~$5,100 for the 1B supply; see README for the derivation.
@@ -54,13 +49,48 @@ contract Deploy is Script {
         locker = new LpLocker(NPM, treasury, owner);
         arena = new MemeArena(usdc, NPM, ROUTER, locker, owner, treasury, lp);
         locker.setArena(address(arena));
-        arena.setHost(host, true);
         arena.setAttester(attester);
         arena.setConfig(cfg);
-        if (vm.envOr("OPEN_PROMPTS", false)) arena.setOpenPrompts(true);
+        _seedEntities(arena);
         vm.stopBroadcast();
 
         console.log("LpLocker ", address(locker));
+        console.log("Block    ", block.number);
         console.log("MemeArena", address(arena));
+    }
+
+    /// Starting entities. People and companies: one race at a time, 24h races, 6h cooldown after a birth.
+    /// Culture: up to 3 parallel 72h races, no cooldown. Ids are keccak256 of "x:<handle lowercased>" or "culture".
+    function _seedEntities(MemeArena arena) internal {
+        string[7] memory handles = ["elonmusk", "realDonaldTrump", "OpenAI", "Google", "Apple", "cz_binance", "circle"];
+        string[7] memory names = ["Elon Musk", "Donald Trump", "OpenAI", "Google", "Apple", "CZ", "Circle"];
+        string[7] memory kinds = ["person", "person", "org", "org", "org", "person", "org"];
+        for (uint256 i; i < handles.length; ++i) {
+            arena.setEntity(
+                keccak256(bytes(string.concat("x:", vm.toLowercase(handles[i])))),
+                true,
+                1,
+                1 days,
+                6 hours,
+                string.concat(
+                    "data:application/json,%7B%22name%22%3A%22", _enc(names[i]), "%22%2C%22kind%22%3A%22", kinds[i],
+                    "%22%2C%22x%22%3A%22", handles[i], "%22%7D"
+                )
+            );
+        }
+        arena.setEntity(
+            keccak256("culture"), true, 3, 3 days, 0,
+            "data:application/json,%7B%22name%22%3A%22Culture%22%2C%22kind%22%3A%22culture%22%7D"
+        );
+    }
+
+    /// Percent-encode spaces (the only special character in the seeded names).
+    function _enc(string memory s) internal pure returns (string memory) {
+        bytes memory b = bytes(s);
+        bytes memory out;
+        for (uint256 i; i < b.length; ++i) {
+            out = b[i] == " " ? bytes.concat(out, "%20") : bytes.concat(out, b[i]);
+        }
+        return string(out);
     }
 }

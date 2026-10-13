@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     return [
       { source: "/m/:id", destination: "/", permanent: false },
       { source: "/r/:id", destination: "/", permanent: false },
+      { source: "/prompt/:id", destination: "/", permanent: false },
     ];
   },
   /* config options here */

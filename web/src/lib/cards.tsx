@@ -39,7 +39,7 @@ export async function pitchCardFromQuery(q: URLSearchParams) {
   ];
 
   return shareCard({
-    eyebrow: !q.get("round") || q.get("round") === "Freestyle" ? "Freestyle pitch" : `Meme this: ${str(q, "round", 60)}`,
+    eyebrow: !q.get("round") || q.get("round") === "Culture" ? "Culture race" : `${str(q, "round", 40)} race · unofficial fan meme`,
     ticker: `$${symbol}`,
     name: str(q, "name", 32) || undefined,
     image: await inlineImage(safeImage(q.get("img") ?? undefined)),

@@ -2,7 +2,7 @@
 
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { STATUS_LABEL, progress, statusOf, type PitchData } from "@/lib/feed";
+import { STATUS_LABEL, progress, statusOf, type EntityData, type PitchData } from "@/lib/feed";
 import { fmtLeft, fmtUsdc } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
@@ -16,7 +16,7 @@ export function Thumb({ p, size = 44 }: { p: Pick<PitchData, "image" | "symbol">
 }
 
 /** One pitch: how close it is to being born, and how long it has left. */
-export function PitchRow({ p, now, mine, showPrompt, onOpen }: { p: PitchData; now: number; mine: boolean; showPrompt?: boolean; onOpen: (id: string) => void }) {
+export function PitchRow({ p, entity, now, mine, onOpen }: { p: PitchData; entity?: EntityData; now: number; mine: boolean; onOpen: (id: string) => void }) {
   const s = statusOf(p, now);
   const pct = progress(p);
   return (
@@ -34,7 +34,7 @@ export function PitchRow({ p, now, mine, showPrompt, onOpen }: { p: PitchData; n
             {s !== "live" && s !== "launched" && <Badge tone={s === "vetoed" ? "danger" : "neutral"}>{STATUS_LABEL[s]}</Badge>}
             {mine && <Badge>You backed</Badge>}
           </div>
-          {showPrompt && p.promptTitle && <div className="mt-0.5 truncate text-xs text-black/50">for “{p.promptTitle}”</div>}
+          {entity && <div className="mt-0.5 truncate text-xs text-black/50">{entity.kind === "culture" ? "Culture" : `about ${entity.name}`}{p.source && " · sourced"}</div>}
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-black/[0.06]">
             <div className={cn("h-full rounded-full transition-all duration-500", s === "launched" ? "bg-black" : pct >= 0.8 ? "bg-positive" : "bg-black/40")} style={{ width: `${Math.max(pct * 100, BigInt(p.total) > 0n ? 3 : 0)}%` }} />
           </div>

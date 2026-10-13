@@ -5,20 +5,21 @@ import { Button, Nudge } from "@/components/ui/button";
 export const metadata = { title: "How it works" };
 
 const STEPS = [
-  ["Pitch", "Name a meme, give it a ticker, an image and a motto. Pitching is free and the pitch is live instantly. Pitch as many as you like."],
-  ["Back", "Put $1–$20 USDC behind any pitch you love. It's held by the contract, not by anyone. Back as many pitches as you like, and pull out any time before launch."],
-  ["Born", "The moment a pitch's backing hits its target, it's born: the coin, its Uniswap pool and every backer's buy all happen in that one transaction, at one price. Nobody has to press anything."],
-  ["Claim", "Backers claim their coins. The pitcher earns 50% of the coin's trading fees forever."],
-  ["Refund", "A pitch that doesn't fill before its timer runs out is refunded in full. So is a pitch that loses its prompt's race or gets removed."],
+  ["Pick an entity", "Memes are about someone or something: Elon, Trump, OpenAI, Google and other public figures and companies, or Culture for memes with no news hook. Only public figures and organisations are allowed, never private people."],
+  ["Pitch", "Name a meme, give it a ticker, an image, a motto and (optionally) the tweet or article it riffs on. It's free. If the entity is idle, your pitch starts its race; otherwise it joins the live race as a rival."],
+  ["Back", "Put $1–$20 USDC behind any pitch you love. It's held by the contract, not by anyone. Back as many as you like, and pull out any time before launch."],
+  ["Born", "The first pitch in a race to hit its target is born that instant: the coin, its Uniswap pool and every backer's buy happen in one transaction, at one price. The race ends and the entity takes a short break so the new coin has room."],
+  ["Claim or refund", "Backers of the winner claim coins. Every rival pitch, and every pitch in a race where nothing filled, is refunded in full."],
 ];
 
 const FAQ = [
-  ["What's a prompt?", "A news event or theme, like “Fed cuts rates”. Many pitches can answer it, but only the first one to fill is born. The rest are refunded at once, so each event gets one coin."],
-  ["What's the early bonus?", "Dollars added right after a pitch appears count up to 1.25× when its coins are split among backers, falling to 1.0× at its deadline. Spotting a winner early pays."],
+  ["Why one race at a time?", "So every coin is an event. Two Elon races at once would split backers, and a flood of coins is what sank Arc's launch week. Culture allows a few races at once because it isn't one topic."],
+  ["What happens after a coin is born?", "The race ends, rivals are refunded, and the entity cools down for a few hours (6h for people and companies) before the next pitch can start a new race. If a race ends with nothing filled, the entity is free again right away."],
+  ["Is this coin official?", "No. Every coin is an unofficial fan meme, not affiliated with or endorsed by the person or company it's about. Tickers that pose as official (like $OPENAI) are refused."],
+  ["What's the early bonus?", "Dollars added right after a pitch appears count up to 1.25× when its coins are split among backers, falling to 1.0× at the race's deadline."],
   ["Can snipers buy before backers?", "No. The coin, its pool, and the backers' purchase all happen in the same transaction, so nothing can get in between."],
-  ["Where do fees go?", "Every trade pays 1% to liquidity that is locked forever: 50% to the pitcher, 20% to the prompt's host, 30% to Meme This."],
-  ["Who holds my money?", "Only the contract. There is no backend wallet: refunds and coins come straight from the contract to you, and nobody can move them anywhere else."],
-  ["Why Arc?", "Everything, gas included, is paid in USDC, so “back this with $2” means exactly that. Blocks finalize in under a second."],
+  ["Where do fees go?", "Every trade pays 1% to liquidity that is locked forever: 50% to the pitcher, 20% to whoever started the race, 30% to Meme This."],
+  ["Who holds my money?", "Only the contract. Refunds and coins come straight from the contract to you, and nobody can move them anywhere else."],
 ];
 
 export default function How() {
