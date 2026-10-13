@@ -1,47 +1,230 @@
 > llmtimeline · cross-agent work record. state.md is the live snapshot — rewrite it in place. sessions/ is append-only history — never edit past files. Any agent: read this file and the newest sessions/ entries before starting.
 
-# Project State — updated 2026-10-03T23:30Z by opus (session 001)
+# Project State — updated 2026-10-14 by opus (session 001, final handoff)
 
-## Goal
-Ship "Meme This" (crowd-picked, demand-gated meme launches as a social game) live on Arc mainnet with a public repo, and submit to Arc Microgrants by 2026-10-12 (deadline 2026-10-14 23:59 ET). Spec: https://claude.ai/code/artifact/c7d07dfa-d2d5-4caa-a1d1-18a22a3af24f
+This file is written for an agent that knows nothing about the project. Read it fully before touching anything.
 
-## Tasks
-- [x] Research + spec (game rules, Moment engine, launch on Uniswap v3, chain strategy)
-- [x] Contracts: MomentArena, MemeToken, LpLocker (contracts/src)
-- [x] Fork tests vs real Uniswap v3 on Arc mainnet (15 passing)
-- [x] Deploy script (simulated on fork; not broadcast)
-- [x] Web app (Next.js 16): home, /m/[id] (pitch/back/switch/withdraw/close/claim), /p/[id] share page, /admin, X share cards (opengraph-image)
-- [x] /api/pass: Coinbase Verifications (Base EAS indexer) then Human Passport score>=20 -> EIP-712 Pass(wallet, identityId, deadline)
-- [-] Farcaster: dropped from MVP (user decision); OG cards still preview there
-- [ ] Wallet-connected browser test of write flows (only verified via cast so far)
-- [ ] Card font polish (OG cards use default font)
-- [x] Mainnet deploy v2 2026-10-04 (rolling rounds): MomentArena 0xc6605B370308d373e97061c1D85Eed05B8b450e2, LpLocker 0x3A6fb91f94A58942C82b402b81aAA4d5580ADabA, block 24228847. (v1 0xBfA2…0288 abandoned, unused.) Owner/host/treasury = deployer 0x4548Ef1e5eCB0E8E743852A0aDd2A980d7f09823 (key in contracts/.env.deployer, git-ignored). Attester 0xF7db9109bCCE77A7Bce7667BebFFA6152Fe7e5A7.
-- [x] Rolling 1h Freestyle rounds live (round #1 opened by deploy); openCreation off; 21 tests pass
-- [ ] First real pitch/back/close on mainnet with a browser wallet
-- [ ] README, demo video, grant submission
-- [ ] Stretch: AI news desk + Telegram approvals, topic voting, ERC-8004 agent
+## 1. What the project is
 
-## Summary
-Design is settled (see spec). Contracts compile with solc 0.8.28 via-IR and pass 15 fork tests covering both pool orderings, conviction weights, switching/lock, verification passes, caps, veto, cancel, ticker registry, pre-initialized-pool griefing, and locker fee split. Launch geometry: 1B supply, single-sided 1% pool, start FDV ~$5.1k ($100 raise buys ~1.9% supply).
+**Meme This**: a social memecoin launchpad on **Arc mainnet** (Circle's L1, where USDC is the gas token). Tagline: "Back a meme. When it fills, it's born."
 
-## Next
-User: get Passport API key + scorer (developer.passport.xyz), create fresh ATTESTER key, fill web/.env.local, then broadcast contracts/script/Deploy.s.sol with own keystore. Then deploy web (e.g. Vercel) with NEXT_PUBLIC_SITE_URL.
-Local demo: anvil fork on :8547 + contracts/script/local/setup-local.sh (port 8545 is the user's own anvil — do not touch).
+- **Entities:** memes are pitched about an *entity*:
+  - a public figure or organisation keyed by X handle (Elon Musk, Donald Trump, OpenAI, Google, Apple, CZ, Circle);
+  - a topic;
+  - **Culture**, for memes with no news hook.
+- **Races:**
+  - The **first pitch on an idle entity starts a race** (24h; Culture 72h).
+  - Later pitches join that race as rivals and share its deadline.
+  - Only one live race per person or company is allowed; Culture allows 3 at once.
+- **Backing:** players back pitches with $1–$20 USDC, held in the contract and withdrawable any time before launch.
+- **Birth:** the back that brings a pitch to its **target ($2 for the demo)** launches the coin **in that same transaction**:
+  - a 1B-supply ERC-20 is created;
+  - a Uniswap v3 1% pool is created, with liquidity minted to a locker forever;
+  - all escrowed USDC is used as the first buy, at one price for every backer;
+  - rival pitches become refundable, and the entity cools down for 6h (Culture: no cooldown).
+- **Refunds:** if a race ends with nothing filled, everyone is refunded and the entity is free immediately.
+- **Fees:** trading fees are split 50% pitcher / 20% race starter / 30% treasury.
+- **Verification (optional):** Coinbase Verifications or Human Passport, shown as a badge only.
+- **Non-custodial:** no database, no keeper, no backend escrow.
 
-Old next (done): Scaffold `web/` (Next.js + wagmi/viem, Arc chain 5042) reading MomentArena events/views; implement `/api/pass` that verifies Farcaster Quick Auth and signs `arena.passDigest(wallet,fid,deadline)` with ATTESTER key.
+**Why it exists** (the problem statement is in README.md): Zora, friend.tech and pump.fun failed users, and so did Arc's own launch week (97k tokens on day one, mostly down 50–80% within 24h). The failures were:
+- coins existing before demand;
+- bots buying first;
+- creators rugging;
+- buyers losing everything;
+- "official-looking" coins.
 
-## Notes
-- Arc Uniswap (from @uniswap/sdk-core ARC_ADDRESSES, verified on-chain): v3 factory 0xf0db7b58379503491d857dB50AC9ece64c653918, NPM 0x39654A85A4C05127f5Fd6ED22CAeC077A0fB1377, SwapRouter02 0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77. NPM.WETH9 is a stub: never call refundETH/unwrapWETH9. No Uniswap on Arc testnet -> fork tests are the rehearsal.
-- Pool feeProtocol currently 0 on Arc.
-- Foundry lives at ~/.foundry/bin (not on PATH by default).
-- Circle Modular (passkey) wallets: Arc testnet only, not mainnet -> embedded-wallet stretch needs another provider.
-- Farcaster mini app wallet does not list Arc (eip155:5042) -> website is the transaction surface.
-- Ties: earlier pitch wins. Pre-initialized pool => close() reverts; retry next block or guardian cancel.
-- User must broadcast deploys with their own keystore; never handle their private key.
-- Verification is per wallet (identityId = keccak(provider, wallet)); providers do the sybil work. Coinbase link https://www.coinbase.com/onchain-verify unverified (DNS blocked here).
-- USDC configurable via env (USDC / NEXT_PUBLIC_USDC_ADDRESS) only for local forks; Arc USDC predeploy has no code on anvil forks.
-- Backer lists come from Backed/Switched/Withdrawn events (web/src/lib/server.ts backersByPitch). Arc RPC caps eth_getLogs at 100k blocks: we binary-search the Moment window and chunk. Set ARENA_FROM_BLOCK to the deploy block in prod.
-- Demo mode (2026-10-04): unlimited pitches per wallet (MAX_PITCHES 100), openCreation flag lets anyone start a round (deploy sets it on), demo rules minRaise $2 / 0 verified / pitch fee $0.10. 18 tests pass.
-- GOTCHA: Node 26 fetch uses HTTP/2; Arc public RPC drops h2 sessions -> ERR_HTTP2_INVALID_SESSION on every server call. Fixed in web/src/instrumentation.ts (undici Agent allowH2:false). Keep it.
-- Share cards (2026-10-04): /card/p/[id] renders ONLY from link query params (no chain reads); share links built by web/src/lib/share.ts. Personal "I backed" variant via a/b params. Fonts in web/assets/fonts. Server reads use a 4-8s TTL cache (Arc RPC rate limits). Set NEXT_PUBLIC_SITE_URL in prod so card URLs are absolute.
-- Frontend redesign (2026-10-04) per Kokonut DS (Robaire Design System.pdf in repo root): / = live round (RoundView), /r/[id], /p/[id] (sheet open), /archive, /how, /admin. Components in web/src/components/{ui,arena}. Tx steps via lib/useTx.ts + sonner toasts. /m/:id redirects to /r/:id.
+Meme This flips the order: demand first, coin second, refunds when a pitch doesn't fill.
+
+**Business context:**
+- Built for the **Arc Microgrants program** (500 USDC). The project must be live on Arc mainnet, with a public repo, a description and a builder profile.
+- **Submissions close 2026-10-14 23:59 ET.**
+- The user (GitHub `calledAdo`) defers to well-researched recommendations; explain decisions with plain user stories.
+
+## 2. Live deployments
+
+- **App:** https://meme-this.vercel.app (Vercel project `meme-this`, root dir `web`, auto-deploys from `main`).
+- **Repo:** https://github.com/calledAdo/meme-this. **It is still PRIVATE; the user must make it public before submitting.**
+- **Arc mainnet (chain 5042), v4, current:**
+  - MemeArena `0x755b553752db1375003E85DAD38502935E86a504`
+  - LpLocker `0x9872D88Ce3297F3A53466AE6730e5919a6Ba3a38`
+  - deploy block 25811982 (`ARENA_FROM_BLOCK=25811900` in env)
+- **Roles:**
+  - owner = guardian = treasury = deployer `0x4548Ef1e5eCB0E8E743852A0aDd2A980d7f09823`, about $1.49 USDC left. Its key is in `contracts/.env.deployer` (git-ignored, mode 600). **Never print it.**
+  - attester (identity-pass signer) `0xF7db9109bCCE77A7Bce7667BebFFA6152Fe7e5A7`. Its key is `ATTESTER_PRIVATE_KEY` in `web/.env.local` and in Vercel env.
+- **Config on-chain:** target 2e6, minBack 1e6, maxPerPerson 20e6, pitchFee 0.
+- **Entities seeded:**
+  - 7 X-handle entities: 1 race, 24h window, 6h cooldown;
+  - Culture: 3 races, 72h, no cooldown.
+- **Retired contracts, not used by the app:**
+  - v1 `0xBfA2…0288` and v2 `0xc6605B37…50e2`: timed rounds;
+  - v3 `0x54F8d0dB…f0af`: prompts. It has an unlaunched pitch #2 $ZAD from the user.
+- **Arc and Uniswap facts:**
+  - USDC ERC-20 is at `0x3600…0000` with 6 decimals; native gas balance has 18 decimals.
+  - Uniswap v3 Factory `0xf0db7b58379503491d857dB50AC9ece64c653918`.
+  - NonfungiblePositionManager `0x39654A85A4C05127f5Fd6ED22CAeC077A0fB1377`. Its WETH9 is a stub: never call refundETH or unwrap.
+  - SwapRouter02 `0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77`.
+  - Multicall3 is at `0xcA11…CA11`.
+  - RPC `https://rpc.mainnet.arc.io` rate-limits requests, and `eth_getLogs` is capped at a 100k-block range.
+  - `PREVRANDAO` is 0, so there is no randomness.
+
+## 3. Code map
+
+### `contracts/` (Foundry; solc 0.8.28, via_ir, cancun; OpenZeppelin 5.1.0)
+- **Libraries:** `lib/` is git-ignored. Install with:
+
+  ```bash
+  forge install foundry-rs/forge-std OpenZeppelin/openzeppelin-contracts@v5.1.0 --no-git
+  ```
+- **`src/MemeArena.sol`**: the game.
+  - **Structs:**
+    - `Config` {target, minBack, maxPerPerson, pitchFee}
+    - `Entity` {active, maxRaces, window, cooldown, cooldownUntil, uri}
+    - `Race` {entity, starter, start, end, cancelled, winner}
+    - `Pitch` {raceId, pitcher, created, expires = race end, vetoed, verifiedBackers, backers, target, maxPerPerson, total, weighted, name, symbol, uri, token, tokensBought, lpTokenId}
+    - `Backing`
+  - **Players:**
+    - `pitch(entityId, raceId, name, symbol, uri)`: raceId 0 starts a race, via `_startRace`, which prunes dead races and checks cooldown and the slot limit.
+    - `back(pitchId, amount, identityId, deadline, sig)`: takes only up to the target; the filling back calls `_launch`.
+    - `withdraw`, `claim`, `withdrawCredit`.
+  - **Guardian:** `setEntity`, `veto`, `cancelRace`.
+  - **Owner:** `setConfig`, `setLaunchParams`, `setGuardian`, `setAttester`, `setTreasury`, `pause`.
+  - **Views:** `statusOf` (Live / Launched / Expired / Vetoed / Lost), `weightAt` (1.25× falling to 1.0× over the pitch's life), `getPitch`, `getRace`, `getRacePitches`, `getEntity`, `getEntityIds`, `liveRaces`, `canStartRace`, `passDigest`.
+  - **Entity ids:** `keccak256("x:<handle lowercased>")`, `keccak256("topic:<slug>")`, `keccak256("culture")`. Entity metadata `uri` is `data:application/json,{name, kind: person|org|topic|culture, x}`.
+  - **Launch:** CREATE2 MemeToken with salt `keccak(pitchId, block.number)`. The pool is single-sided, with params tickA -398200 / tickB 398200, for about $5.1k starting FDV. The launch reverts if the pool was pre-initialised. The LP NFT goes to the locker with `register(lpTokenId, pitcher, raceStarter)`, then the escrowed USDC is swapped as the first trade.
+- **`src/LpLocker.sol`**: holds LP NFTs forever, `collect()` splits fees 50/20/30, pull-based `withdraw(token)`.
+- **`src/MemeToken.sol`**: fixed supply, no owner, stores `metadataURI` and `pitchId`.
+- **`test/MemeArena.t.sol`**: 23 fork tests, all passing. Run with `forge test`; it forks Arc mainnet.
+  - MockUSDC is placed at a low or high address to cover both pool orderings.
+  - Helpers: `_start(entity,…)`, `_join(entity, raceId,…)`, and `_pitch(0,…)`, which is a standalone Culture race.
+  - Use `vm.getBlockTimestamp()`, because via-IR caches `block.timestamp`.
+- **`script/Deploy.s.sol`**:
+  - Env: `TREASURY`, `ATTESTER`, `TARGET` (default 2e6), `PITCH_FEE`, and `USDC` (local forks only).
+  - Seeds the entities and prints LpLocker, MemeArena and Block.
+- **`script/export_abi.py`**: run after `forge build` to regenerate `web/src/lib/abi.ts` (`memeArenaAbi`, `lpLockerAbi`).
+- **`script/local/setup-local.sh`**: local rehearsal on an anvil fork at port 8547.
+
+  ```bash
+  anvil --fork-url https://rpc.mainnet.arc.io --port 8547 --chain-id 5042
+  ```
+
+  It deploys MockUSDC and the contracts, then seeds an Elon race plus a Culture race, using anvil's public keys only. **Port 8545 is the user's own anvil; never touch it.**
+
+### `web/` (Next.js 16.3.8, React 19, Tailwind v4, wagmi / viem 2.57, react-query, sonner, Radix Dialog)
+- **Next 16 has breaking changes.** Read `web/node_modules/next/dist/docs` first.
+  - `params` are Promises.
+  - The `PageProps` / `RouteContext` types come from `npx next typegen`.
+  - If tsc complains about deleted routes, delete stale `.next/dev/types`.
+- **Check before pushing:**
+
+  ```bash
+  npx tsc --noEmit
+  ```
+
+  ```bash
+  npm run lint
+  ```
+
+  ```bash
+  npx next build
+  ```
+- **`src/lib/feed.ts`**:
+  - Client types: `EntityData`, `RaceData`, `PitchData`, `FeedData`, `Backer`.
+  - Helpers: `statusOf`, `raceLive`, `entityState` (live races, `coolingFor`, `canStart`), `progress`, `remaining`, `unofficial()`.
+- **`src/lib/server.ts`** (server-only):
+  - `arcClient` uses batch, multicall and retries.
+  - `ttl()` is an in-memory cache.
+  - `loadFeed()` reads entities, the 40 newest races and the 80 newest pitches.
+  - Also `loadPitch`, `loadEntityPitches`, `withPitches`.
+  - `backersOf(pitchId)` replays Backed/Withdrawn events within the pitch's block window, found by binary search and chunked to 100k blocks.
+- **`src/lib/meta.ts`**:
+  - `encodeMeta` / `decodeMeta` handle data-URI JSON.
+  - `safeImage`.
+  - `safeSource`: https only, no link shorteners.
+  - `tweetId`, `sourceHost`.
+  - `looksOfficial`: blocks tickers like `$OPENAI` or "Official…".
+- **Other lib files:**
+  - `identity.ts` + `app/api/pass/route.ts`: Coinbase EAS check on Base, then Human Passport score ≥ 20, then an EIP-712 `Pass(wallet, identityId, deadline)`. The domain is `{name: "MemeThis", version: "2"}`.
+  - `chain.ts`: the Arc chain and env-driven addresses.
+  - `share.ts` + `cards.tsx` + `card.tsx` + `app/card/p/[id]/route.tsx`: X share cards drawn purely from URL params, with no chain reads.
+  - `useTx.ts`: runs multi-step transactions with toasts.
+  - `wagmi.ts`: Coinbase Wallet plus EIP-6963 discovery.
+- **`instrumentation.ts`**: an undici agent with HTTP/2 off. It fixes `ERR_HTTP2_INVALID_SESSION` under Node 26.
+- **`src/components/feed/`**:
+  - `Feed.tsx`: hero, entity grid with race status, tabs (Live / Born / Refunding), `EntityHeader`, `EntityTile` (neutral initials, never logos).
+  - `PitchRow.tsx`.
+  - `PitchSheet.tsx`: back, withdraw, claim, source link, backer list from `/api/backers/[id]`, unofficial label.
+  - `PitchDialog.tsx`: entity picker, join-or-start-race choice, source link, official-ticker check, live card preview.
+  - `SidePanel.tsx`: connect, pitch button, claimables, your backings, balance, identity.
+  - `usePlayer.ts`: `backings` multicall plus the actions `back`, `withdraw`, `claim`, `pitch(fee, entityId, raceId, …)`.
+- **Pages:**
+  - `/` feed;
+  - `/e/[slug]` entity page; the slug is the lowercased X handle, or `culture`;
+  - `/p/[id]` share link with the pitch opened;
+  - `/archive` born coins;
+  - `/how`;
+  - `/admin`: approve entities with `setEntity` (1 race, 24h, 6h), veto pitches, cancel races.
+- **Redirects:** `/m/:id`, `/r/:id` and `/prompt/:id` all go to `/`.
+- **Environment:**
+  - `web/.env.local` (git-ignored) holds: `NEXT_PUBLIC_ARENA_ADDRESS`, `NEXT_PUBLIC_LOCKER_ADDRESS`, `ARENA_FROM_BLOCK`, `ATTESTER_PRIVATE_KEY`, `PASSPORT_API_KEY`, `PASSPORT_SCORER_ID`, `PASSPORT_THRESHOLD=20`, `ARC_RPC_URL`, `BASE_RPC_URL`, `NEXT_PUBLIC_SITE_URL`, and a Vercel OIDC token.
+  - The same variables are set in Vercel production, with `NEXT_PUBLIC_SITE_URL=https://meme-this.vercel.app`.
+  - `web/.env.example` documents them with blank values.
+- **Vercel CLI** is installed and logged in as `calledado`.
+  - Change an env var with `vercel env rm X production --yes`, then pipe the new value into `vercel env add X production`.
+  - Git pushes to `main` deploy automatically. Commits must be authored as `calledAdo <destinyadokiye8@gmail.com>`, which is set in the repo's local git config; otherwise Vercel blocks the deploy.
+
+## 4. Rules for whoever continues
+
+- **Never print, commit or send private keys.** Secrets go only in `contracts/.env.deployer`, `web/.env.local` and Vercel env.
+- **Ask the user before:**
+  - mainnet transactions or deploys;
+  - force-pushes;
+  - anything outward-facing.
+
+  The user runs in "Manual" permission mode; auto mode blocks production deploys.
+- **A redeploy means:**
+  - new addresses and a new `ARENA_FROM_BLOCK` in `.env.local` **and** in Vercel;
+  - running `export_abi.py`;
+  - updating the README addresses;
+  - a push.
+- **Content safety is part of the design:**
+  - entities are approved public figures, organisations or topics only, never private people;
+  - "Unofficial … not affiliated" labels everywhere;
+  - no real logos or photos;
+  - no sexual or invented content about real people (moderate with `veto`).
+- **Keep it non-custodial:** money logic stays in contracts; the server only reads, signs identity passes and draws cards.
+- Commit messages end with `Co-Authored-By: Claude …`, as in existing commits.
+
+## 5. Status
+
+**Done:**
+- research;
+- game design (v1 rounds, then v3 auto-launch, then v4 entities and races);
+- contracts and 23 tests;
+- mainnet v4 deploy, verified on-chain;
+- full web app;
+- X cards;
+- identity passes;
+- Vercel production;
+- a detailed README covering problem, design, contracts, app, security, lessons, done/todo and deployments;
+- local fork rehearsal of the v4 flows.
+
+**Not yet done:**
+1. **No real mainnet launch on v4 yet.** The user should connect a wallet, pitch on Elon or Culture, and back it with $2. Then check on `/archive` that the coin is born and claimable.
+2. **Make the repo public, record the demo video, submit the grant** (deadline 2026-10-14 23:59 ET).
+3. **MetaMask/Blockaid flags `meme-this.vercel.app` as malicious.** This is a heuristic on fresh crypto sites hosted on `vercel.app`; the domain is not on MetaMask's own blocklist.
+   - Fix: a custom domain (add it in Vercel, then update `NEXT_PUBLIC_SITE_URL` and redeploy).
+   - Also file a false-positive report at report.blockaid.io and with MetaMask's eth-phishing-detect.
+4. **X share cards work.** The image only appears after posting; X's compose box doesn't preview it.
+
+## 6. Roadmap after the grant (agreed direction)
+
+- **Community entity requests:** anyone pastes an X profile; approval is automatic above a public-figure threshold (follower count or verified badge via the X API, roughly $200/mo tier). Store X's numeric user ID, not the handle, so renames don't break it.
+- **Embedded tweets** for source links, via X's free embed (oEmbed).
+- **Indexer plus database** (Ponder or Envio style) for full history beyond the 80 newest pitches, portfolios and leaderboards.
+- **Gasless backing:** EIP-712 intents or Permit2 through a relayer, still non-custodial. Also email/social login with embedded wallets, once a provider supports Arc mainnet.
+- **AI news desk** that suggests trending moments per entity.
+- **Image upload to IPFS.**
+- **Fee dashboard** (LpLocker `collect` / `withdraw` in the UI).
+- **Raise target and caps gradually**, and consider requiring verified backers before a launch.
+- **External audit** before larger limits. Today the contracts are unaudited and caps are small.
