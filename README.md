@@ -2,7 +2,7 @@
 
 **Back a meme. When it fills, it's born.**
 
-Meme This is a social memecoin launchpad on [Arc](https://arc.io), Circle's USDC-native L1. Anyone pitches a coin for free. Players back the pitches they believe in with small amounts of USDC. The instant a pitch's backing reaches its target, the coin is born: the token, its Uniswap v3 pool with permanently locked liquidity, and every backer's purchase all happen in one transaction, at one price. If a pitch doesn't fill in time, every backer is refunded in full.
+Meme This is a social memecoin launchpad on [Arc](https://arc.io), Circle's USDC-native L1. People pitch meme coins about what's happening in the world (Elon, OpenAI, Trump and other public figures and companies) or about pure internet culture. Each entity runs one race at a time: the first pitch starts it, rivals join, and players back the pitches they love with small amounts of USDC. The first pitch to reach its target is born: the token, its Uniswap v3 pool with permanently locked liquidity, and every backer's purchase all happen in one transaction, at one price. Every other pitch is refunded in full.
 
 - **Live app:** https://meme-this.vercel.app
 - **Chain:** Arc mainnet (chain id 5042), gas paid in USDC
@@ -52,24 +52,38 @@ This makes the launchpad behave like crowdfunding plus a game:
 - **Backers are rewarded for conviction, not speed against bots.** Early dollars earn a bonus share of tokens (up to 1.25×).
 - **No fill, no loss.** Backing a pitch that doesn't launch costs nothing but a little gas; refunds are guaranteed by the contract.
 - **Creators earn only if the crowd chooses them**, and then earn half of the coin's trading fees forever. Liquidity is locked, so there is nothing to rug.
-- **News and culture become events.** A "prompt" (e.g. *"Fed cuts rates"*) can collect many competing pitches, but only the first to fill is born, so each moment gets one canonical coin, and the race itself is the game.
+- **News and culture become events.** Each entity (Elon, OpenAI, Culture…) runs one race at a time. Many pitches compete, only the first to fill is born, then the entity cools down, so each moment gets one canonical coin and the race itself is the game.
 
 ## 3. How it works (player view)
 
-| Step | What happens |
-|---|---|
-| **Pitch** | Give a meme a name, a ticker (A–Z, 0–9, up to 10 chars), an image link and a motto. It's free (one wallet confirmation, a fraction of a cent of gas) and goes live instantly. Pitch as many as you like. |
-| **Back** | Put $1–$20 USDC behind any live pitch. Back as many pitches as you want. Pull your money out any time before launch. |
-| **Born** | The back that takes a pitch to its target (currently **$2** for the demo) launches it automatically in that same transaction: ERC-20 created, Uniswap v3 pool created and seeded, liquidity locked forever, and all escrowed USDC used as the pool's first buy. Nobody has to press "launch" or "close". |
-| **Claim** | Backers claim their share of the coins, weighted by their early bonus. The coin is immediately tradable on Uniswap. |
-| **Refund** | A pitch that isn't filled within **24 hours** is refunded in full. So is a pitch removed by the moderator, or one that loses its prompt's race. |
-| **Share** | Every pitch has an X share card (image generated on the fly) showing its ticker, progress toward its target, backers and time left, plus a personal "I backed" variant. |
+**Entities.** Memes are about someone or something:
+- **People and organisations** (e.g. @elonmusk, @OpenAI), keyed by their X handle. Only public figures and organisations are approved, never private individuals.
+- **Topics**, for events that aren't accounts.
+- **Culture**, for memes with no news hook (the next Shiba or Pepe).
 
-**Prompts.** A host (the team, later a news desk or the community) can open a prompt such as *"ETF approved"* for a pitching window. Many pitches can answer it. The first to fill is born, and every rival in that prompt becomes refundable at that moment. Freestyle pitches (no prompt) just ripen on their own, like Shiba or Pepe-style culture memes that aren't tied to an event.
+Every entity is labelled *"Unofficial fan memes. Not affiliated with or endorsed by …"*, and uses our own neutral tile, never their logo or photo.
+
+**Races.**
+
+| Rule | Detail |
+|---|---|
+| **Start** | The first pitch on an idle entity starts its race (24h; Culture 72h). Nobody has to "open" anything. |
+| **Join** | Every later pitch joins the live race as a rival and shares its deadline. |
+| **One at a time** | One live race per person or company, so backers aren't split. Culture allows up to 3 parallel races. |
+| **Born** | The first pitch to reach its target (currently **$2** for the demo) is born. The race ends, rivals are refunded at once, and the entity cools down for **6 hours** so the new coin has room to trade. |
+| **No fill** | If the deadline passes with nothing filled, everyone is refunded and the entity is free again right away. |
+
+**Pitching** is free: a name, a ticker (A–Z, 0–9, up to 10 characters), an image link, a motto and an optional **source link** (the tweet or article it riffs on). Tickers that pose as official (`$OPENAI`, "Official…") are refused. Sexual or invented content about real people is vetoed and its backers are refunded.
+
+**Backing:** put $1–$20 USDC behind any live pitch; back as many as you like and withdraw any time before launch.
+
+**Birth:** the back that fills a pitch launches it in that same transaction: ERC-20 created, Uniswap v3 pool created and seeded, liquidity locked forever, and all escrowed USDC used as the pool's first buy. Backers then claim their coins.
+
+**Share:** every pitch has an X share card (ticker, entity, progress to target, backers, time left), plus a personal "I backed" variant.
 
 **Early bonus.** Each dollar is weighted from 1.25× (backed the second the pitch appears) falling linearly to 1.0× (at its deadline). When coins are split among backers, weight decides the share. Finding good memes early pays.
 
-**Fees.** The pool charges 1% per trade. The locked liquidity position's fees are split **50% to the pitcher, 20% to the prompt's host (treasury for freestyle), 30% to the protocol treasury**, claimable at any time.
+**Fees.** The pool charges 1% per trade. The locked liquidity position's fees are split **50% to the pitcher, 20% to whoever started the race (for spotting the moment), 30% to the protocol treasury**, claimable at any time.
 
 ## 4. Why Arc
 
@@ -82,7 +96,7 @@ This makes the launchpad behave like crowdfunding plus a game:
 
 ```
             ┌────────────────────────── Arc mainnet ─────────────────────────────┐
- browser ──▶│ MemeArena  ── pitch / back / withdraw / claim / prompts / veto     │
+ browser ──▶│ MemeArena  ── entities / races / pitch / back / claim / veto       │
  (wallet)   │    │  on ripening back:                                            │
             │    ├─ CREATE2 MemeToken (1B supply)                                │
             │    ├─ Uniswap v3: create pool (1% tier) + mint single-sided LP ──▶ LpLocker (forever)
@@ -90,7 +104,7 @@ This makes the launchpad behave like crowdfunding plus a game:
             └────────────────────────────────────────────────────────────────────┘
                  ▲ reads (multicall, cached)        ▲ EIP-712 "pass" signatures
             ┌────┴───────────────────────── Next.js on Vercel ────────────────────┐
-            │ pages: feed · prompt · pitch link · born · how · admin              │
+            │ pages: feed · entity · pitch link · born · how · admin              │
             │ /api/backers/[id]  backer list rebuilt from events                  │
             │ /api/pass          Coinbase Verifications / Human Passport → pass   │
             │ /card/p/[id]       X share card image (from URL params, no RPC)     │
@@ -101,7 +115,7 @@ This makes the launchpad behave like crowdfunding plus a game:
 
 - **On-chain:** everything that touches money or decides an outcome: escrow, the ripening rule, the launch, refunds, fee splits. This is non-custodial: no server ever holds user funds.
 - **Off-chain (the Next.js server):** everything about experience: reading and caching chain state, rebuilding backer lists from events, signing optional identity passes, and drawing share images.
-- **No database, no keeper, no cron.** Launches happen inside the filling transaction, and expiry/refunds are pure functions of time in the contract. There is nothing that must "run" for the game to progress.
+- **No database, no keeper, no cron.** Races start inside the first pitch, launches happen inside the filling transaction, and expiry, cooldowns and refunds are pure functions of time in the contract. There is nothing that must "run" for the game to progress.
 
 ## 6. Smart contracts in detail
 
@@ -116,23 +130,24 @@ All contracts are in `contracts/src`, Solidity 0.8.28 (via-IR, Cancun), OpenZepp
   Live ─────────────────────────────▶ Launched
    │  ├── now ≥ expires ──────────▶ Expired   ┐
    │  ├── guardian veto() ────────▶ Vetoed    ├─ refundable via claim()
-   │  └── prompt won / cancelled ─▶ Lost      ┘
+   │  └── race won / cancelled ─▶ Lost        ┘
 ```
 
 **Player functions**
 
 | Function | Behaviour |
 |---|---|
-| `pitch(promptId, name, symbol, uri)` | Free by default (`config.pitchFee` = 0; if set, it's credited to the treasury). `promptId` 0 = freestyle. Symbol `[A-Z0-9]{1,10}`, name 1–32 bytes. Ticker and case-insensitive name must not be held by a **live or launched** pitch (an expired or vetoed pitch frees them, a launched one holds them forever). Snapshots the current `target`, `maxPerPerson` and `expires = now + lifetime`. |
+| `pitch(entityId, raceId, name, symbol, uri)` | Free by default (`config.pitchFee` = 0; if set, it's credited to the treasury). `raceId` 0 **starts a race** on the entity (must be approved, out of cooldown, and under its parallel-race limit); otherwise the pitch **joins** that live race of the same entity. `expires` = the race's end, shared by every pitch in it. Symbol `[A-Z0-9]{1,10}`, name 1–32 bytes. Ticker and case-insensitive name must not be held by a **live or launched** pitch (an expired or vetoed pitch frees them, a launched one holds them forever). |
 | `back(pitchId, amount, identityId, deadline, sig)` | Pitch must be Live. Takes `min(amount, target − total)` so the target is hit exactly and overshoot stays in the wallet. Enforces `minBack` (except for the final top-up) and `maxPerPerson`. Optional identity pass (see below). Records conviction weight. **If this back fills the target, calls `_launch` in the same transaction.** |
 | `withdraw(pitchId)` | Full withdrawal while the pitch is Live. |
 | `claim(pitchId)` | Launched: pro-rata coins by weight. Expired / Vetoed / Lost: full USDC refund. One-shot. |
 | `withdrawCredit()` | Treasury pulls pitch fees (if any). |
 
-**Hosts and moderation**
+**Entities, races and moderation**
 
-- `createPrompt(duration, uri)`: by approved hosts (or anyone if `openPrompts`); pitching window 10 minutes to 7 days.
-- `veto(pitchId, reason)` and `cancelPrompt(promptId, reason)`: guardian only, makes affected pitches refundable. The guardian **cannot** take funds or stop refunds.
+- `setEntity(id, active, maxRaces, window, cooldown, uri)`: guardian only. Approves or retires an entity. Ids are `keccak256("x:<handle lowercased>")` for X accounts, `keccak256("topic:<slug>")` for topics, `keccak256("culture")` for Culture. Seeded at deploy: Elon Musk, Donald Trump, OpenAI, Google, Apple, CZ, Circle (1 race, 24h, 6h cooldown) and Culture (3 races, 72h, no cooldown).
+- Views: `getEntityIds`, `getEntity`, `liveRaces(entity)`, `canStartRace(entity)`, `getRace`, `getRacePitches`.
+- `veto(pitchId, reason)` and `cancelRace(raceId, reason)`: guardian only, make affected pitches refundable. The guardian **cannot** take funds or stop refunds.
 - Owner: `setConfig`, `setLaunchParams`, hosts, guardian, attester, treasury, `pause`. Pause blocks new pitches and backs; **withdrawals and claims keep working**.
 
 **The launch (`_launch`)**
@@ -140,7 +155,7 @@ All contracts are in `contracts/src`, Solidity 0.8.28 (via-IR, Cancun), OpenZepp
 1. Deploy `MemeToken` with CREATE2 (salt = `keccak(pitchId, block.number)`), minting the full 1,000,000,000 supply to the arena.
 2. Create and initialise the Uniswap v3 pool (1% fee tier, tick spacing 200) at a start price just outside a **single-sided** liquidity range, so the position contains only the coin and needs no seed USDC. Two geometries handle either token ordering (coin as token0 or token1).
 3. **Anti-griefing:** if someone pre-created the pool at a hostile price (the coin address is predictable), the launch reverts; the next block yields a new coin address.
-4. Mint the full-supply LP position directly to `LpLocker` and register pitcher and host for fees. Any unused dust of the coin is burned.
+4. Mint the full-supply LP position directly to `LpLocker` and register the pitcher and the race starter for fees. Any unused dust of the coin is burned. Mark the race won and start the entity's cooldown.
 5. Swap **all** escrowed USDC into the coin as the pool's first trade, held by the arena for backers to claim.
 
 Starting valuation is about **$5,100 fully diluted** (tick ±398,200), so a $2 fill buys roughly 0.04% of supply and price discovery continues on Uniswap.
@@ -157,7 +172,7 @@ Plain fixed-supply ERC-20 (1B, 18 decimals). No owner, no mint, no tax, no block
 
 ### Tests
 
-`contracts/test/MemeArena.t.sol`: **20 fork tests against Arc mainnet** (real Uniswap v3 deployment, mock USDC placed at low and high addresses to exercise both pool orderings):
+`contracts/test/MemeArena.t.sol`: **23 fork tests against Arc mainnet** (real Uniswap v3 deployment, mock USDC placed at low and high addresses to exercise both pool orderings):
 
 - ripening launch with exact-target fill and pro-rata claims, both pool orderings
 - overshoot is not taken
@@ -165,9 +180,11 @@ Plain fixed-supply ERC-20 (1B, 18 decimals). No owner, no mint, no tax, no block
 - conviction bonus math
 - expiry refunds and withdraw while live
 - veto refunds, which free the ticker
-- prompt race (first to fill wins, rivals refundable, host gets fee share)
-- prompt cancel and prompt pitching window
-- host permissions
+- entity race: first to fill wins, rivals refundable, shared deadline, race starter gets the host fee share
+- one live race per entity, cooldown after a birth, no cooldown after a race with no fill
+- no joining after the deadline or across entities
+- Culture parallel races
+- race cancel, guardian-only entity approval, unknown or retired entities rejected
 - identity binding and forged pass rejection
 - caps
 - ticker/name uniqueness lifecycle
@@ -183,12 +200,12 @@ Next.js 16 (App Router, React 19, Tailwind v4), wagmi/viem, react-query. Deploye
 
 | Route | Purpose |
 |---|---|
-| `/` | The live feed. Tabs **Live** (sorted by closest to being born), **Born**, **Refunding**; open prompts as cards; side panel with "Pitch a meme", your active backings, and one-click claims. |
-| `/prompt/[id]` | A prompt's race: title, sources, time left, every pitch in it, the winner once born. |
+| `/` | The live feed: entity cards with their race status, tabs **Live** (sorted by closest to being born), **Born**, **Refunding**; side panel with "Pitch a meme", your active backings, and one-click claims. |
+| `/e/[slug]` | An entity page (e.g. `/e/elonmusk`, `/e/culture`): race status, cooldown, "Start a race" / "Pitch a rival", every pitch about it. |
 | `/p/[id]` | Shareable pitch link: renders the feed with that pitch open; carries the X card metadata. |
 | `/archive` | Born coins with links to trade on Uniswap. |
 | `/how` | Rules and FAQ. |
-| `/admin` | Open prompts, veto pitches, cancel prompts (roles enforced by the contract). |
+| `/admin` | Approve or retire entities, veto pitches, cancel races (roles enforced by the contract). |
 | `/api/pass` | Checks Coinbase Verifications (EAS on Base) and Human Passport, signs an identity pass. |
 | `/api/backers/[id]` | Backer list for a pitch, rebuilt by replaying `Backed`/`Withdrawn` events in the pitch's block window (binary-searched by timestamp, chunked to Arc's 100k-block log limit, cached). |
 | `/card/p/[id]` | 1200×630 share image (`next/og`), drawn purely from URL parameters, so link previews never hit the RPC. |
@@ -207,7 +224,7 @@ Next.js 16 (App Router, React 19, Tailwind v4), wagmi/viem, react-query. Deploye
 - **No rug path:** the LP position is owned by `LpLocker`, which has no withdraw-liquidity function. The token has no owner or mint.
 - **No sniping:** coin creation, pool creation, liquidity and the backers' buy are atomic. Pool pre-initialisation is detected and rejected.
 - **Refunds can't be blocked:** claims and withdrawals work while paused; payouts are pulled by their recipient (USDC on Arc has a blocklist, so push-payments could otherwise be frozen).
-- **Guardian powers are limited** to veto and cancel, both of which only make funds refundable.
+- **Guardian powers are limited** to approving entities, vetoing pitches and cancelling races; the last two only make funds refundable.
 - **Attester key** (server) can only sign "this wallet is verified"; compromise would let someone fake a badge, nothing more.
 - **Not audited.** Caps are deliberately small ($20 per person per pitch). Use at your own risk.
 
@@ -220,22 +237,26 @@ This is the third version of the contracts, and each rewrite came from testing t
   - players waited on a timer;
   - one-pick-per-round plus switch and lock windows confused people;
   - pitching cost a fee and a USDC approval.
-- **v3 (current): graduation, not rounds.** We studied how successful launchpads split work between chain and backend:
+- **v3: graduation, not rounds.** We studied how successful launchpads split work between chain and backend:
   - **pump.fun:** an on-chain bonding curve with automatic, irreversible graduation to its DEX.
   - **Fomo:** embedded wallets, gas sponsored by the platform, a social feed.
   - **Clanker:** on-chain launch and locked liquidity, with a social front end.
 
-  The pattern: money and launch rules stay on-chain, and everything about experience lives off-chain. None of them hold user funds on a server. So v3 keeps escrow and launch on-chain and removes every human step: a pitch launches the instant it's ripe, expires on its own, and prompts became "first to fill wins" races instead of timed rounds.
+  The pattern: money and launch rules stay on-chain, and everything about experience lives off-chain. None of them hold user funds on a server. So v3 keeps escrow and launch on-chain and removes every human step: a pitch launches the instant it's ripe and expires on its own.
+- **v4 (current): entities and races.** v3 still needed an admin to open each "prompt". v4 makes it permissionless: the first pitch on an entity starts its race. Three lessons shaped it:
+  - Zora's "official-looking" coin crashed 95%, so v4 has unofficial labels and refuses official-looking tickers.
+  - Arc's launch-week flood made no single coin matter, so v4 allows one race per entity plus a cooldown.
+  - Coins about private people would be harassment, so the guardian approves only public figures, organisations and topics.
 - **Why not a backend escrow?** A server holding user USDC would be custodial (legal and security risk, users must trust us). It also wouldn't remove the real friction, which came from rounds and buttons, not from the escrow being a contract.
 - **Farcaster** was considered and dropped: it's small, and its mini-app wallet doesn't support Arc. X share cards reach more people with no extra integration.
 
 ## 10. What has been done
 
 - [x] Product research (launchpads, chain choice, social platforms, identity providers) and game design
-- [x] `MemeArena` v3, `LpLocker`, `MemeToken` with 20 passing mainnet-fork tests
-- [x] Deployed to **Arc mainnet** and configured (demo rules: $2 target, $1–$20 per backer, free pitching, 24h lifetime)
-- [x] Local rehearsal tooling on an Arc fork (`setup-local.sh`) used to verify launch, prompt race and refund flows end to end
-- [x] Next.js app: feed, prompt races, pitch sheet, pitch creation with live card preview, claims, archive, how-it-works, admin
+- [x] `MemeArena` v4 (entities and races), `LpLocker`, `MemeToken` with 23 passing mainnet-fork tests
+- [x] Deployed to **Arc mainnet** and configured (demo rules: $2 target, $1–$20 per backer, free pitching; 7 entities + Culture seeded)
+- [x] Local rehearsal tooling on an Arc fork (`setup-local.sh`) used to verify race start, birth, rival refunds and cooldown end to end
+- [x] Next.js app: entity grid and pages, race status and cooldowns, pitch sheet with source links, pitch creation with live card preview, claims, archive, how-it-works, admin
 - [x] Optional identity: Coinbase Verifications + Human Passport → EIP-712 pass
 - [x] X share cards (pitch card + personal "I backed" card), rendered without chain reads
 - [x] Production deployment on Vercel (https://meme-this.vercel.app), auto-deploys from `main`
@@ -254,10 +275,11 @@ This is the third version of the contracts, and each rewrite came from testing t
 
 **Next**
 
+- [ ] **Community entity requests** with automatic public-figure checks (e.g. follower threshold via the X API), and embedded tweets for source links
 - [ ] **Indexer + database** (e.g. a Ponder/Envio-style event indexer) for instant feeds, full history beyond the newest 80 pitches, per-wallet portfolios and leaderboards
 - [ ] **Gasless backing**: EIP-712 back intents or Permit2 signatures submitted by a relayer, so players never handle approvals or gas (still non-custodial)
 - [ ] **Email / social login** with embedded wallets once a provider supports Arc mainnet
-- [ ] **News desk**: an AI-assisted host that opens prompts from verified breaking news (two reputable sources), so the event feed runs itself
+- [ ] **News desk**: an AI-assisted assistant that suggests trending moments per entity, so feeds stay fresh
 - [ ] Image upload (IPFS) instead of image links, and richer pitch pages (comments, holders, chart)
 - [ ] Creator and host fee dashboard (`LpLocker.collect` / `withdraw` in the UI)
 - [ ] Raise targets and caps gradually from demo levels; consider verified-backer minimums for launches
@@ -269,14 +291,14 @@ This is the third version of the contracts, and each rewrite came from testing t
 
 | Contract | Address |
 |---|---|
-| MemeArena (v3) | [`0x54F8d0dB512a201631C311c1Eda8Be255bcFf0af`](https://explorer.arc.io/address/0x54F8d0dB512a201631C311c1Eda8Be255bcFf0af) |
-| LpLocker | [`0x78132cb0F8532D79f4042ae6c52af6A7EdB8016d`](https://explorer.arc.io/address/0x78132cb0F8532D79f4042ae6c52af6A7EdB8016d) |
+| MemeArena (v4) | [`0x755b553752db1375003E85DAD38502935E86a504`](https://explorer.arc.io/address/0x755b553752db1375003E85DAD38502935E86a504) |
+| LpLocker | [`0x9872D88Ce3297F3A53466AE6730e5919a6Ba3a38`](https://explorer.arc.io/address/0x9872D88Ce3297F3A53466AE6730e5919a6Ba3a38) |
 | USDC (ERC-20 interface, 6 dp) | `0x3600000000000000000000000000000000000000` |
 | Uniswap v3 Factory | `0xf0db7b58379503491d857dB50AC9ece64c653918` |
 | Uniswap v3 NonfungiblePositionManager | `0x39654A85A4C05127f5Fd6ED22CAeC077A0fB1377` |
 | Uniswap SwapRouter02 | `0x53BF6B0684Ec7eF91e1387Da3D1a1769bC5A6F77` |
 
-Deployed at block ~24,247,511. Earlier round-based versions (v1 `0xBfA2…0288`, v2 `0xc660…50e2`) are retired; the app no longer uses them.
+Deployed at block 25,811,982. Earlier versions are retired and no longer used by the app: v1/v2 timed rounds (`0xBfA2…0288`, `0xc660…50e2`) and v3 prompts without entities (`0x54F8…f0af`).
 
 ## 13. Running it yourself
 
@@ -291,18 +313,18 @@ forge test                         # forks Arc mainnet via the `arc` rpc endpoin
 Deploy (the broadcaster becomes owner and guardian):
 
 ```bash
-TREASURY=0x… HOST=0x… ATTESTER=0x… TARGET=2000000 \
+TREASURY=0x… ATTESTER=0x… TARGET=2000000 \
   forge script script/Deploy.s.sol --rpc-url arc --private-key $KEY --broadcast
 python3 script/export_abi.py       # refresh web/src/lib/abi.ts
 ```
 
-Optional env: `LIFETIME` (seconds, default 86400), `PITCH_FEE` (default 0), `OPEN_PROMPTS`.
+Optional env: `PITCH_FEE` (default 0). The script seeds the starting entities; add more from `/admin`.
 
 **Local rehearsal on an Arc fork**
 
 ```bash
 anvil --fork-url https://rpc.mainnet.arc.io --port 8547 --chain-id 5042
-contracts/script/local/setup-local.sh    # deploys with mock USDC, seeds a prompt and pitches
+contracts/script/local/setup-local.sh    # deploys with mock USDC, seeds an Elon race and a Culture race
 ```
 
 Uses anvil's public test keys only.
@@ -320,11 +342,11 @@ npm run dev
 
 ```
 contracts/
-  src/MemeArena.sol          game, escrow, launch
+  src/MemeArena.sol          entities, races, escrow, launch
   src/LpLocker.sol           permanent LP custody + fee split
   src/MemeToken.sol          fixed-supply ERC-20
   src/interfaces/            minimal Uniswap v3 interfaces
-  test/MemeArena.t.sol       20 Arc-mainnet fork tests
+  test/MemeArena.t.sol       23 Arc-mainnet fork tests
   script/Deploy.s.sol        mainnet deploy + config
   script/export_abi.py       ABI → web
   script/local/              anvil-fork rehearsal (mock USDC, seed data)
