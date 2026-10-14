@@ -1,19 +1,25 @@
 import type { Connector } from "wagmi";
 
-/** Report a stalled QR without racing or abandoning the SDK's pending request. */
-export async function withWalletQrTimeout<T>(
+export type WalletRecoveryStage = "qr" | "approval";
+
+/** Offer help without expiring the QR or abandoning the SDK's pending request. */
+export async function withWalletConnectionRecovery<T>(
   connector: Pick<Connector, "type" | "emitter">,
   connect: () => Promise<T>,
-  onStalled: (stalled: boolean) => void,
+  onStalled: (stage: WalletRecoveryStage | null) => void,
   timeoutMs = 20_000,
+  approvalTimeoutMs = 60_000,
 ): Promise<T> {
   if (connector.type !== "walletConnect") return connect();
 
-  const timer = setTimeout(() => onStalled(true), timeoutMs);
+  let timer = setTimeout(() => onStalled("qr"), timeoutMs);
+  let qrReady = false;
   const ready = ({ type }: { type: string }) => {
-    if (type !== "display_uri") return;
+    if (type !== "display_uri" || qrReady) return;
+    qrReady = true;
     clearTimeout(timer);
-    onStalled(false);
+    onStalled(null);
+    timer = setTimeout(() => onStalled("approval"), approvalTimeoutMs);
   };
   connector.emitter.on("message", ready);
   try {
@@ -21,7 +27,7 @@ export async function withWalletQrTimeout<T>(
   } finally {
     clearTimeout(timer);
     connector.emitter.off("message", ready);
-    onStalled(false);
+    onStalled(null);
   }
 }
 
@@ -39,8 +45,9 @@ export function walletConnectionState(
 }
 
 /** Prefer a discovered extension over its matching remote connector. */
-export function walletOptions<T extends { name: string; type: string }>(connectors: readonly T[]) {
-  const installed = connectors.filter((c) => c.type === "injected");
+export function walletOptions<T extends { id?: string; name: string; type: string }>(connectors: readonly T[], hasBrowserProvider = false) {
+  const discovered = connectors.filter((c) => c.type === "injected" && c.id !== "injected");
+  const installed = discovered.length ? discovered : connectors.filter((c) => c.type === "injected" && hasBrowserProvider);
   const remote = connectors.filter((c) => c.type !== "injected");
   return [...installed, ...remote].filter((c, i, all) =>
     all.findIndex((other) => other.name.toLowerCase() === c.name.toLowerCase()) === i,
@@ -69,6 +76,9 @@ export function walletError(error: unknown) {
   }
   if (/unsupported chain|chain.*not supported|unrecognized chain|chain.*not approved/i.test(message)) {
     return "This wallet hasn't enabled Arc. Add Arc in your wallet or choose another wallet.";
+  }
+  if (/network|relay|websocket|fetch failed|failed to fetch|timed? ?out|timeout/i.test(message)) {
+    return "Couldn't reach the wallet connection service. Open this page in your wallet's browser, or try another network and a fresh QR code.";
   }
   return message;
 }

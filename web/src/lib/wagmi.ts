@@ -1,18 +1,21 @@
 import { createConfig, http } from "wagmi";
 import { coinbaseWallet } from "wagmi/connectors/coinbaseWallet";
 import { walletConnect } from "wagmi/connectors/walletConnect";
+import { injected } from "wagmi/connectors/injected";
 import { arc, SITE_URL } from "./chain";
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim();
 
 /**
  * Installed wallets are discovered individually via EIP-6963 (MetaMask, Phantom, Rabby, …), so we only
- * talk to the one the user picks. A generic injected() connector would poke whichever extension owns
- * window.ethereum and surface its "site not authorized" errors on page load.
+ * talk to the one the user picks. The targetless fallback is shown only when discovery finds no
+ * wallet and window.ethereum exists. Wagmi's shim prevents automatic account checks until that
+ * fallback has been explicitly connected; do not give it a target or disable shimDisconnect.
  */
 export const wagmiConfig = createConfig({
   chains: [arc],
   connectors: [
+    injected({ shimDisconnect: true }),
     // Safari and other browsers without an injected wallet can pair with a phone.
     // Never initialize the relay with a placeholder or an empty project ID.
     ...(projectId ? [walletConnect({

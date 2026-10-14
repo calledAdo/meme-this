@@ -1,16 +1,18 @@
 > llmtimeline · cross-agent work record. state.md is the live snapshot — rewrite it in place. sessions/ is append-only history — never edit past files. Any agent: read this file and the newest sessions/ entries before starting.
 
-# Project State — updated 2026-10-14T08:57Z by Codex (session 002)
+# Project State — updated 2026-10-14T09:46Z by Codex (session 002)
 
 This file is written for an agent that knows nothing about the project. Read it fully before touching anything.
 
 ## Current session
 
-- [~] QR spinner root cause verified: router DNS (192.168.1.1) returns REFUSED for relay.walletconnect.org; public DNS returns valid records. A temporary test-browser DNS override produces a populated QR on production using the supplied project ID. Added a 20-second recovery notice with reload/retry; timer stops when the QR URI arrives. Unit tests/build pass, browser verification and deployment pending. OS/router DNS unchanged.
+- [~] Visitor-facing wallet fallback improvements implemented and verified; publishing next. Mobile chooser offers Browser/Discover instructions for SafePal/Bitget, copyable current-page link and existing MetaMask shortcut. Added explicit targetless injected fallback when a provider exists but no wallet is discovered. Recovery offers help after 20s without QR or 60s awaiting approval, Keep waiting, reload/choose another method, and expandable network/DNS guidance. Fourteen tests, types/lint/build and local browser checks pass, including no unsolicited fallback account requests, connect/reload/disconnect, copy failure recovery, responsive layout and keyboard navigation.
+- [x] User confirms both SafePal and Bitget mobile wallets now connect from Android to Mac Safari. Bitget previously stalled; SafePal reported "Failed to connect to wallet connect, Please check network". User set Android Private DNS provider hostname to `one.one.one.one`, then retried with a fresh QR; both work. This strongly supports phone DNS/network access as the remaining cause, rather than wallet-specific incompatibility or differing cellular/Wi-Fi networks. No further app change was needed.
+- [x] QR spinner resolved: router DNS (192.168.1.1) refused WalletConnect lookups. User approved changing Mac Wi-Fi DNS; tested and set 1.1.1.1 / 1.0.0.1, confirmed active via scutil. Live site now produces a populated QR using normal system DNS with no browser override. App recovery notice deployed as `eb15006` (Vercel `dpl_Dyxh4JTqJmicQ9zAcwm6naoMB3Av`, Ready). Eleven tests, types, lint, local/cloud builds and live browser tests pass. Recovery appears after 20 seconds without a QR, offers network advice and safe reload, and stops timing once a URI arrives.
 - [x] User confirms wallet connection and the full v4 pitch/back/launch/claim flow work. This supersedes the earlier zero-activity snapshot below; transaction hashes were not supplied.
 - [x] Implement Safari wallet alternatives locally: conditional WalletConnect QR/mobile pairing, accessible wallet chooser, mobile MetaMask shortcut, installed-wallet preference, cancellation/retry and chain-switch feedback. Required WalletConnect and Coinbase SDKs installed; connector-specific imports remove previous missing-SDK build warnings.
 - [x] User supplied the public Reown project ID and confirmed Safari on Mac. Configured `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in git-ignored `web/.env.local` and Vercel Production; rebuilt successfully. Desktop WalletConnect option, QR screen opening, Escape cancellation and retry state verified.
-- [x] Populated QR verified on the live site with a browser-only DNS override: relay websocket responds and a `wc:` URI-backed SVG renders. Supplied project ID and production origin work. Actual phone approval still requires the user's wallet; local Wi-Fi inherits the router DNS, which refuses the relay lookup.
+- [x] Populated QR verified first with a browser-only DNS override, then with normal system DNS after the approved Mac change; user subsequently confirms real phone connections with SafePal and Bitget. Supplied project ID and production origin work. Router settings unchanged. Mac Wi-Fi DNS rollback: `networksetup -setdnsservers Wi-Fi Empty`; Android Private DNS rollback: select Automatic.
 - [x] User explicitly authorized deployment ("deploy"). Wallet update and address-display fix committed/pushed as `6faa225`; Vercel production deployment `dpl_2xF7iBYPjuGGhMBkTjgm2UQRRqKD` is Ready and aliased to https://meme-this.vercel.app. Live HTTP 200 and browser checks pass: mobile-wallet option without extensions, SDK screen open/cancel/retry, simulated-wallet connect/reload/account-change/disconnect with visible address and no uncaught errors. No real wallet transactions performed.
 - [x] Repository orientation: read the timeline, contracts/tests/deployment, web routes, transaction flows, identity, metadata/share cards, and configuration. Initial worktree was clean on `main` at `aec3c00`. Only timeline documentation changed.
 
@@ -33,7 +35,9 @@ This file is written for an agent that knows nothing about the project. Read it 
 
 ### Next
 
-Finish browser checks for the local QR recovery notice, then deploy under the existing authorization. Current live application is `6faa225`; recovery changes are local. Root cause is the user's router DNS refusing WalletConnect, not a bad project ID: a browser-only resolver override produces a populated QR on production. Ask before changing Mac Wi-Fi DNS (currently no explicit servers; inherits router); a phone hotspot is another workaround. Eleven wallet tests, types, lint and webpack build pass. Recovery keeps the original SDK request pending and offers a full reload because `abortPairingAttempt()` in the installed SDK is deprecated and a no-op. Once `display_uri` arrives, the recovery timer stops. Address-display fix and existing Safari chooser remain deployed. Remaining grant tasks unchanged.
+Publish the verified visitor-facing fallback changes, wait for Vercel readiness, then repeat browser checks on production. Actual SafePal/Bitget in-app browser behavior is not independently tested; tests use simulated legacy and EIP-6963 providers. Previous real user confirmation covered WalletConnect pairing, not the new direct-browser fallback.
+
+Wallet connection task is complete: user confirms SafePal and Bitget connect from Android to Mac Safari after correcting DNS on both devices. Current production is `eb15006`, Ready at https://meme-this.vercel.app. QR generation, cancellation, and blocked-DNS recovery/reload/retry also passed Chromium checks. Mac Wi-Fi uses Cloudflare 1.1.1.1 / 1.0.0.1 with user approval; user manually set Android Private DNS to `one.one.one.one`. App recovery preserves the SDK request and offers full reload because abortPairingAttempt is a no-op; QR readiness stops the timer. Eleven tests, types/lint and local/cloud builds pass. Connection success does not establish new transaction/chain-switch tests with these two wallets. Final deployment/network/user-verification records are local timeline changes. Remaining public repo/demo/grant/domain-warning tasks unchanged.
 
 ## 1. What the project is
 
@@ -243,7 +247,7 @@ Meme This flips the order: demand first, coin second, refunds when a pitch doesn
 - user-confirmed real v4 wallet connection, pitch/back/launch/claim flow (session 002 follow-up).
 
 **Not yet done:**
-1. **Safari wallet coverage:** deployed at `6faa225`; populated QR verified with browser-only public DNS. Router DNS refuses the relay, so user needs another network or a DNS change for pairing. Timed recovery notice is being verified locally; real phone approval remains untested.
+1. **Safari wallet coverage completed:** deployed through `eb15006`; Mac DNS and Android Private DNS corrected. User confirms real connections with SafePal and Bitget. New transaction/chain-switch tests with these wallets were not reported.
 2. **Make the repo public, record the demo video, submit the grant** (deadline 2026-10-14 23:59 ET).
 3. **MetaMask/Blockaid flags `meme-this.vercel.app` as malicious.** This is a heuristic on fresh crypto sites hosted on `vercel.app`; the domain is not on MetaMask's own blocklist.
    - Fix: a custom domain (add it in Vercel, then update `NEXT_PUBLIC_SITE_URL` and redeploy).
