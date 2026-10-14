@@ -216,7 +216,8 @@ Next.js 16 (App Router, React 19, Tailwind v4), wagmi/viem, react-query. Deploye
 - Multi-step transactions (approve, then back) run under a single progress toast. USDC approvals are for the exact amount, never unlimited.
 - Statuses and countdowns are computed client-side from the snapshot, so they tick live, and the feed refreshes every 15 seconds.
 - Server reads use batched multicall, retries, and short in-memory caches to stay under the public RPC's rate limits.
-- Wallets: Coinbase Wallet plus any browser wallet via EIP-6963 discovery.
+- Wallets: detected browser wallets via EIP-6963, WalletConnect for QR/mobile pairing (including Safari), and Coinbase Wallet. Mobile browsers also offer an "Open in MetaMask" shortcut. Wallets must support Arc or allow it as a custom network.
+- The wallet button and transaction controls use the same active-account state, so a usable address remains visible while other wallet connections are being checked in the background.
 
 ## 8. Security and trust model
 
@@ -337,6 +338,10 @@ cp .env.example .env.local   # contract addresses, ARENA_FROM_BLOCK, Passport ke
 npm install
 npm run dev
 ```
+
+**Safari and mobile wallet pairing:** create a project at [Reown Dashboard](https://dashboard.reown.com) and set its public project ID as `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in `web/.env.local` and the deployment environment. Allow `https://meme-this.vercel.app` (or your custom domain) and development origins in the project's origin allowlist. Set `NEXT_PUBLIC_SITE_URL` to the app's canonical URL. These public variables are embedded at build time, so rebuild after changing them. Without the project ID, WalletConnect is omitted; browser wallets, Coinbase and the mobile MetaMask shortcut still work.
+
+Wallet connection checks: `cd web && npm run test:wallet`. For a manual Safari check, open **Connect wallet → Connect a mobile wallet**, pair using a QR code on Mac or a wallet-app link on iPhone/iPad, approve Arc, disconnect and reconnect. Also check cancelling a request and rejecting a network switch. Pairing alone does not send a transaction.
 
 ## 14. Repository layout
 

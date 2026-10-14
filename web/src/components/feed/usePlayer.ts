@@ -6,6 +6,7 @@ import { useAccount, useReadContract, useReadContracts, useWriteContract } from 
 import { memeArenaAbi } from "@/lib/abi";
 import { ARENA, USDC, arc, erc20Abi } from "@/lib/chain";
 import { useTx, type Step } from "@/lib/useTx";
+import { walletConnectionState } from "@/lib/wallet";
 
 type Pass = { verified: true; provider: string; identityId: string; deadline: string; signature: Hex } | { verified: false; passportScore: number | null };
 
@@ -13,9 +14,11 @@ export type MyBacking = { amount: bigint; weighted: bigint; verified: boolean; c
 
 /** The connected player's backings across the pitches on screen, plus the actions they can take. */
 export function usePlayer(pitchIds: string[]) {
-  const { address, chainId } = useAccount();
+  const connection = useAccount();
+  const { address } = connection;
+  const wallet = walletConnectionState(connection, arc.id);
   const me = address ?? zeroAddress;
-  const enabled = !!address;
+  const enabled = wallet.connected;
   const { writeContractAsync } = useWriteContract();
   const tx = useTx();
 
@@ -84,8 +87,8 @@ export function usePlayer(pitchIds: string[]) {
 
   return {
     address,
-    connected: !!address,
-    onArc: chainId === arc.id,
+    connected: wallet.connected,
+    onArc: wallet.onChain,
     mine,
     balance: balance.data ?? 0n,
     pass: pass.data ?? null,

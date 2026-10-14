@@ -1,8 +1,38 @@
 > llmtimeline · cross-agent work record. state.md is the live snapshot — rewrite it in place. sessions/ is append-only history — never edit past files. Any agent: read this file and the newest sessions/ entries before starting.
 
-# Project State — updated 2026-10-14 by opus (session 001, final handoff)
+# Project State — updated 2026-10-14T08:47Z by Codex (session 002)
 
 This file is written for an agent that knows nothing about the project. Read it fully before touching anything.
+
+## Current session
+
+- [x] User confirms wallet connection and the full v4 pitch/back/launch/claim flow work. This supersedes the earlier zero-activity snapshot below; transaction hashes were not supplied.
+- [x] Implement Safari wallet alternatives locally: conditional WalletConnect QR/mobile pairing, accessible wallet chooser, mobile MetaMask shortcut, installed-wallet preference, cancellation/retry and chain-switch feedback. Required WalletConnect and Coinbase SDKs installed; connector-specific imports remove previous missing-SDK build warnings.
+- [x] User supplied the public Reown project ID and confirmed Safari on Mac. Configured `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in git-ignored `web/.env.local` and Vercel Production; rebuilt successfully. Desktop WalletConnect option, QR screen opening, Escape cancellation and retry state verified.
+- [!] Populated QR / real phone pairing not verified: both `relay.walletconnect.org` and `relay.walletconnect.com` fail DNS resolution from this environment (browser ERR_NAME_NOT_RESOLVED and curl exit 6). This does not establish whether the project ID/origin allowlist is accepted.
+- [~] User explicitly authorized deployment ("deploy"). Publish the verified wallet update and check the production alias and live wallet chooser. Do not ask for deployment approval again.
+- [x] Repository orientation: read the timeline, contracts/tests/deployment, web routes, transaction flows, identity, metadata/share cards, and configuration. Initial worktree was clean on `main` at `aec3c00`. Only timeline documentation changed.
+
+### Fresh verification (session 002)
+
+- GitHub API confirms `calledAdo/meme-this` remains **PRIVATE**, default branch `main`.
+- Production homepage responds HTTP 200. This is an HTTP reachability check, not a browser wallet-flow test.
+- Read-only Arc calls to the documented v4 arena confirm **pitchCount=0, raceCount=0, launchCount=0**, `paused=false`, eight entity IDs, config `(2000000,1000000,20000000,0)` (target $2 / min $1 / cap $20 / free pitching).
+- `/Users/adokiye/.foundry/bin/forge test`: **23 passed, 0 failed**. Foundry is installed but not on this session's shell PATH. Tests use real forked Uniswap with mock USDC; this does not replace a real Arc USDC/wallet rehearsal.
+- `npx tsc --noEmit` and `npm run lint`: pass.
+- `npm run build`: could not complete in this execution environment (Google Fonts networking initially, then Turbopack's PostCSS worker failed to bind a local port with EPERM). `npx next build --webpack`: **passes**, with dependency warnings including missing `@coinbase/wallet-sdk`, other connector SDKs, and ox/tempo imports. Coinbase is explicitly configured in `src/lib/wagmi.ts`; verify that connector before calling wallet support fully tested. No dependency or build configuration changes made.
+- The reported MetaMask/Blockaid flag and grant deadline remain historical handoff information; neither was independently reverified here.
+
+### Implementation distinctions to retain
+
+- Refunds become claimable automatically, but wallets must call `claim()` to receive USDC. There is no automatic refund transfer or keeper.
+- Backers share one pooled first purchase, then receive conviction-weighted allocations (up to 1.25x early bonus), so their effective tokens per dollar can differ.
+- The default feed/archive/portfolio see the newest 80 pitches and 40 races (plus races needed by those pitches). Direct `/p/[id]` pages fetch older pitches, but full portfolio/history discovery needs the planned indexer.
+- Official-name filtering is a UI check in `PitchDialog`/`meta.ts`, backed by guardian moderation; it is not an on-chain ticker prohibition. Identity badges are optional wallet-level verification, not a launch threshold.
+
+### Next
+
+Deployment is explicitly authorized and in progress. Publish the wallet update to `main`, wait for Vercel readiness, and verify the production chooser. The update includes a reproduced address-display fix: Wagmi can expose a usable account while its overall status remains connecting; header and transaction controls now share account-based state. Seven focused tests, TypeScript, lint, and `next build --webpack` pass. Project ID is configured locally and in Vercel Production. Then test real Safari-on-Mac QR/phone pairing on Arc, including the production origin allowlist if the relay rejects it. Local relay DNS failure prevents end-to-end pairing here. Browser checks with a simulated EIP-6963 wallet previously passed discovery, rejection/retry, connect, rejected/successful Arc switching and disconnect; mobile Safari emulation verified the MetaMask shortcut and layout. Configured WalletConnect opens its QR screen and handles Escape cancellation/retry without uncaught browser errors, but no populated QR could be confirmed. The user confirms the earlier mainnet flow works. Public repository, demo recording, submission, and the previously reported domain warning remain open.
 
 ## 1. What the project is
 
@@ -148,7 +178,8 @@ Meme This flips the order: demand first, coin second, refunds when a pitch doesn
   - `chain.ts`: the Arc chain and env-driven addresses.
   - `share.ts` + `cards.tsx` + `card.tsx` + `app/card/p/[id]/route.tsx`: X share cards drawn purely from URL params, with no chain reads.
   - `useTx.ts`: runs multi-step transactions with toasts.
-  - `wagmi.ts`: Coinbase Wallet plus EIP-6963 discovery.
+  - `wagmi.ts`: EIP-6963 discovery, Coinbase Wallet (EOA preference for Arc), and WalletConnect when `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is set. SDKs are explicit dependencies; imports use connector-specific entry points.
+  - `wallet.ts` + `components/ConnectButton.tsx`: installed-wallet preference, QR/app chooser, mobile MetaMask shortcut, cancellation and chain-switch errors. `npm run test:wallet` runs focused Node tests (Node version with TypeScript stripping required).
 - **`instrumentation.ts`**: an undici agent with HTTP/2 off. It fixes `ERR_HTTP2_INVALID_SESSION` under Node 26.
 - **`src/components/feed/`**:
   - `Feed.tsx`: hero, entity grid with race status, tabs (Live / Born / Refunding), `EntityHeader`, `EntityTile` (neutral initials, never logos).
@@ -208,9 +239,10 @@ Meme This flips the order: demand first, coin second, refunds when a pitch doesn
 - Vercel production;
 - a detailed README covering problem, design, contracts, app, security, lessons, done/todo and deployments;
 - local fork rehearsal of the v4 flows.
+- user-confirmed real v4 wallet connection, pitch/back/launch/claim flow (session 002 follow-up).
 
 **Not yet done:**
-1. **No real mainnet launch on v4 yet.** The user should connect a wallet, pitch on Elon or Culture, and back it with $2. Then check on `/archive` that the coin is born and claimable.
+1. **Safari wallet coverage:** implemented locally, project ID configured locally and in Vercel Production, and checked with a simulated wallet plus SDK modal/cancellation. Actual phone pairing remains unverified because of relay DNS failures here; deployment awaiting approval.
 2. **Make the repo public, record the demo video, submit the grant** (deadline 2026-10-14 23:59 ET).
 3. **MetaMask/Blockaid flags `meme-this.vercel.app` as malicious.** This is a heuristic on fresh crypto sites hosted on `vercel.app`; the domain is not on MetaMask's own blocklist.
    - Fix: a custom domain (add it in Vercel, then update `NEXT_PUBLIC_SITE_URL` and redeploy).
