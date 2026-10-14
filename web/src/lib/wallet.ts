@@ -1,3 +1,30 @@
+import type { Connector } from "wagmi";
+
+/** Report a stalled QR without racing or abandoning the SDK's pending request. */
+export async function withWalletQrTimeout<T>(
+  connector: Pick<Connector, "type" | "emitter">,
+  connect: () => Promise<T>,
+  onStalled: (stalled: boolean) => void,
+  timeoutMs = 20_000,
+): Promise<T> {
+  if (connector.type !== "walletConnect") return connect();
+
+  const timer = setTimeout(() => onStalled(true), timeoutMs);
+  const ready = ({ type }: { type: string }) => {
+    if (type !== "display_uri") return;
+    clearTimeout(timer);
+    onStalled(false);
+  };
+  connector.emitter.on("message", ready);
+  try {
+    return await connect();
+  } finally {
+    clearTimeout(timer);
+    connector.emitter.off("message", ready);
+    onStalled(false);
+  }
+}
+
 /** Wagmi can expose a usable account while still checking other connectors. */
 export function walletConnectionState(
   connection: { address?: string; chainId?: number; isConnecting: boolean; isReconnecting: boolean },

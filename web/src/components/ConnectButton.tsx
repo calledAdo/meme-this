@@ -2,7 +2,7 @@
 
 import { ArrowUpRight, ChevronDown, LogOut, QrCode, Smartphone, Wallet } from "lucide-react";
 import { useState } from "react";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { toast } from "sonner";
 import { useAccount, useConnect, useDisconnect, useSwitchChain, type Connector } from "wagmi";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { arc } from "@/lib/chain";
 import { cn } from "@/lib/cn";
 import { short } from "@/lib/format";
-import { isMobileWalletBrowser, metamaskBrowserUrl, walletConnectionState, walletError, walletOptions } from "@/lib/wallet";
+import { isMobileWalletBrowser, metamaskBrowserUrl, walletConnectionState, walletError, walletOptions, withWalletQrTimeout } from "@/lib/wallet";
 
 /** Browser wallets plus phone pairing for browsers such as Safari. */
 export function ConnectButton({ full }: { full?: boolean }) {
@@ -24,6 +24,7 @@ export function ConnectButton({ full }: { full?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const [mobile, setMobile] = useState(false);
   const [appUrl, setAppUrl] = useState<string | null>(null);
+  const [pairingStalled, setPairingStalled] = useState(false);
 
   const options = walletOptions(connectors);
   const installed = options.filter((c) => c.type === "injected");
@@ -45,7 +46,7 @@ export function ConnectButton({ full }: { full?: boolean }) {
     // Release our focus trap before a wallet SDK opens its own QR / app modal.
     flushSync(() => setOpen(false));
     try {
-      await connectAsync({ connector, chainId: arc.id });
+      await withWalletQrTimeout(connector, () => connectAsync({ connector, chainId: arc.id }), setPairingStalled);
     } catch (e) {
       setError(walletError(e));
       setOpen(true);
@@ -104,6 +105,18 @@ export function ConnectButton({ full }: { full?: boolean }) {
   };
 
   return (
+    <>
+    {pairingStalled && createPortal(
+      <div role="alert" className="fixed inset-x-4 top-4 z-[2147483647] mx-auto max-w-md rounded-lg border border-black/15 bg-white p-4 shadow-lg">
+        <p className="text-sm font-medium">The wallet QR code is taking too long.</p>
+        <p className="mt-1 text-sm text-black/60">Your network may be blocking WalletConnect. Try a phone hotspot or another Wi-Fi network, then reload to try again.</p>
+        {/* A full reload resets the SDK too: its abortPairingAttempt is a no-op. */}
+        <Button autoFocus className="mt-3" onKeyDown={(event) => {
+          // Keep keyboard access to recovery above the SDK's own focus trap.
+          if (event.key === "Tab") { event.preventDefault(); event.stopPropagation(); }
+        }} onClick={() => window.location.reload()}>Reload and retry</Button>
+      </div>, document.body
+    )}
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
         <Button className={cn(full && "w-full")} disabled={isPending}>
@@ -141,5 +154,6 @@ export function ConnectButton({ full }: { full?: boolean }) {
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

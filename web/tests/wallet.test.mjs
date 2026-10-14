@@ -1,8 +1,68 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { EventEmitter } from "node:events";
 import { createConfig, createConnector, http } from "wagmi";
 import { getConnection, getConnectorClient, reconnect } from "wagmi/actions";
-import { isMobileWalletBrowser, metamaskBrowserUrl, walletConnectionState, walletError, walletOptions } from "../src/lib/wallet.ts";
+import { isMobileWalletBrowser, metamaskBrowserUrl, walletConnectionState, walletError, walletOptions, withWalletQrTimeout } from "../src/lib/wallet.ts";
+
+test("stalled QR offers recovery without abandoning a connection; a late QR clears it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const emitter = new EventEmitter();
+  const states = [];
+  let resolve;
+  let settled = false;
+  const attempt = withWalletQrTimeout({ type: "walletConnect", emitter }, () => new Promise(r => { resolve = r; }), s => states.push(s));
+  void attempt.then(() => { settled = true; });
+  t.mock.timers.tick(20_000);
+  await Promise.resolve();
+  assert.deepEqual(states, [true]);
+  assert.equal(settled, false);
+  emitter.emit("message", { type: "display_uri" });
+  assert.deepEqual(states, [true, false]);
+  resolve("connected");
+  assert.equal(await attempt, "connected");
+  assert.equal(emitter.listenerCount("message"), 0);
+});
+
+test("a ready QR leaves unlimited scan time and unrelated events do not stop the timer", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const emitter = new EventEmitter();
+  const states = [];
+  let resolve;
+  const attempt = withWalletQrTimeout({ type: "walletConnect", emitter }, () => new Promise(r => { resolve = r; }), s => states.push(s));
+  emitter.emit("message", { type: "connecting" });
+  t.mock.timers.tick(19_999);
+  assert.deepEqual(states, []);
+  emitter.emit("message", { type: "display_uri" });
+  t.mock.timers.tick(300_000);
+  assert.deepEqual(states, [false]);
+  resolve();
+  await attempt;
+});
+
+test("cancellation and failures clean up the timer and listener before retry", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const emitter = new EventEmitter();
+  const states = [];
+  for (const message of ["Connection request reset", "Relay unavailable"]) {
+    await assert.rejects(withWalletQrTimeout({ type: "walletConnect", emitter }, async () => { throw new Error(message); }, s => states.push(s)), new RegExp(message));
+    assert.equal(emitter.listenerCount("message"), 0);
+  }
+  t.mock.timers.tick(30_000);
+  assert.deepEqual(states, [false, false]);
+  assert.equal(await withWalletQrTimeout({ type: "walletConnect", emitter }, async () => "retry success", s => states.push(s)), "retry success");
+  assert.equal(emitter.listenerCount("message"), 0);
+});
+
+test("extension approvals never acquire a QR timeout", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const emitter = new EventEmitter();
+  const states = [];
+  assert.equal(await withWalletQrTimeout({ type: "injected", emitter }, async () => "connected", s => states.push(s)), "connected");
+  t.mock.timers.tick(30_000);
+  assert.deepEqual(states, []);
+  assert.equal(emitter.listenerCount("message"), 0);
+});
 
 test("header and transaction state agree while Wagmi checks a slower second wallet", async () => {
   const account = "0x1111111111111111111111111111111111111111";

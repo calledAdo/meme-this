@@ -1,16 +1,17 @@
 > llmtimeline · cross-agent work record. state.md is the live snapshot — rewrite it in place. sessions/ is append-only history — never edit past files. Any agent: read this file and the newest sessions/ entries before starting.
 
-# Project State — updated 2026-10-14T08:47Z by Codex (session 002)
+# Project State — updated 2026-10-14T08:57Z by Codex (session 002)
 
 This file is written for an agent that knows nothing about the project. Read it fully before touching anything.
 
 ## Current session
 
+- [~] QR spinner root cause verified: router DNS (192.168.1.1) returns REFUSED for relay.walletconnect.org; public DNS returns valid records. A temporary test-browser DNS override produces a populated QR on production using the supplied project ID. Added a 20-second recovery notice with reload/retry; timer stops when the QR URI arrives. Unit tests/build pass, browser verification and deployment pending. OS/router DNS unchanged.
 - [x] User confirms wallet connection and the full v4 pitch/back/launch/claim flow work. This supersedes the earlier zero-activity snapshot below; transaction hashes were not supplied.
 - [x] Implement Safari wallet alternatives locally: conditional WalletConnect QR/mobile pairing, accessible wallet chooser, mobile MetaMask shortcut, installed-wallet preference, cancellation/retry and chain-switch feedback. Required WalletConnect and Coinbase SDKs installed; connector-specific imports remove previous missing-SDK build warnings.
 - [x] User supplied the public Reown project ID and confirmed Safari on Mac. Configured `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` in git-ignored `web/.env.local` and Vercel Production; rebuilt successfully. Desktop WalletConnect option, QR screen opening, Escape cancellation and retry state verified.
-- [!] Populated QR / real phone pairing not verified: both `relay.walletconnect.org` and `relay.walletconnect.com` fail DNS resolution from this environment (browser ERR_NAME_NOT_RESOLVED and curl exit 6). This does not establish whether the project ID/origin allowlist is accepted.
-- [~] User explicitly authorized deployment ("deploy"). Publish the verified wallet update and check the production alias and live wallet chooser. Do not ask for deployment approval again.
+- [x] Populated QR verified on the live site with a browser-only DNS override: relay websocket responds and a `wc:` URI-backed SVG renders. Supplied project ID and production origin work. Actual phone approval still requires the user's wallet; local Wi-Fi inherits the router DNS, which refuses the relay lookup.
+- [x] User explicitly authorized deployment ("deploy"). Wallet update and address-display fix committed/pushed as `6faa225`; Vercel production deployment `dpl_2xF7iBYPjuGGhMBkTjgm2UQRRqKD` is Ready and aliased to https://meme-this.vercel.app. Live HTTP 200 and browser checks pass: mobile-wallet option without extensions, SDK screen open/cancel/retry, simulated-wallet connect/reload/account-change/disconnect with visible address and no uncaught errors. No real wallet transactions performed.
 - [x] Repository orientation: read the timeline, contracts/tests/deployment, web routes, transaction flows, identity, metadata/share cards, and configuration. Initial worktree was clean on `main` at `aec3c00`. Only timeline documentation changed.
 
 ### Fresh verification (session 002)
@@ -32,7 +33,7 @@ This file is written for an agent that knows nothing about the project. Read it 
 
 ### Next
 
-Deployment is explicitly authorized and in progress. Publish the wallet update to `main`, wait for Vercel readiness, and verify the production chooser. The update includes a reproduced address-display fix: Wagmi can expose a usable account while its overall status remains connecting; header and transaction controls now share account-based state. Seven focused tests, TypeScript, lint, and `next build --webpack` pass. Project ID is configured locally and in Vercel Production. Then test real Safari-on-Mac QR/phone pairing on Arc, including the production origin allowlist if the relay rejects it. Local relay DNS failure prevents end-to-end pairing here. Browser checks with a simulated EIP-6963 wallet previously passed discovery, rejection/retry, connect, rejected/successful Arc switching and disconnect; mobile Safari emulation verified the MetaMask shortcut and layout. Configured WalletConnect opens its QR screen and handles Escape cancellation/retry without uncaught browser errors, but no populated QR could be confirmed. The user confirms the earlier mainnet flow works. Public repository, demo recording, submission, and the previously reported domain warning remain open.
+Finish browser checks for the local QR recovery notice, then deploy under the existing authorization. Current live application is `6faa225`; recovery changes are local. Root cause is the user's router DNS refusing WalletConnect, not a bad project ID: a browser-only resolver override produces a populated QR on production. Ask before changing Mac Wi-Fi DNS (currently no explicit servers; inherits router); a phone hotspot is another workaround. Eleven wallet tests, types, lint and webpack build pass. Recovery keeps the original SDK request pending and offers a full reload because `abortPairingAttempt()` in the installed SDK is deprecated and a no-op. Once `display_uri` arrives, the recovery timer stops. Address-display fix and existing Safari chooser remain deployed. Remaining grant tasks unchanged.
 
 ## 1. What the project is
 
@@ -242,7 +243,7 @@ Meme This flips the order: demand first, coin second, refunds when a pitch doesn
 - user-confirmed real v4 wallet connection, pitch/back/launch/claim flow (session 002 follow-up).
 
 **Not yet done:**
-1. **Safari wallet coverage:** implemented locally, project ID configured locally and in Vercel Production, and checked with a simulated wallet plus SDK modal/cancellation. Actual phone pairing remains unverified because of relay DNS failures here; deployment awaiting approval.
+1. **Safari wallet coverage:** deployed at `6faa225`; populated QR verified with browser-only public DNS. Router DNS refuses the relay, so user needs another network or a DNS change for pairing. Timed recovery notice is being verified locally; real phone approval remains untested.
 2. **Make the repo public, record the demo video, submit the grant** (deadline 2026-10-14 23:59 ET).
 3. **MetaMask/Blockaid flags `meme-this.vercel.app` as malicious.** This is a heuristic on fresh crypto sites hosted on `vercel.app`; the domain is not on MetaMask's own blocklist.
    - Fix: a custom domain (add it in Vercel, then update `NEXT_PUBLIC_SITE_URL` and redeploy).
